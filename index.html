@@ -1,0 +1,2086 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Git cho team dev</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap">
+<style>
+/* Layout: a fixed 1920x1080 stage, letterboxed and scaled to the viewport; one slide visible at a time.
+   Single dark look on purpose (a stage, like a terminal), so no light variant. */
+:root {
+  color-scheme: dark;
+  --ink: #0c0f13;      /* stage background */
+  --panel: #151a21;    /* cards, editors */
+  --panel2: #1d242e;   /* raised */
+  --line: #2b3440;     /* hairlines */
+  --fg: #e9edf1;       /* text */
+  --mute: #95a2b1;     /* secondary text */
+  --git: #f05033;      /* git's own orange: the accent */
+  --blue: #59a8ff;     /* teammates, remote */
+  --green: #45c46f;    /* safe / good */
+  --red: #ff6161;      /* danger */
+  --amber: #f3bb4f;    /* comments, warnings */
+  --violet: #ab90ff;   /* new commits */
+  --display: "Bricolage Grotesque", "Be Vietnam Pro", system-ui, sans-serif;
+  --body: "Be Vietnam Pro", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ease: cubic-bezier(.2,.8,.2,1);
+}
+html, body { height: 100%; }
+body { background: var(--ink); color: var(--fg); font-family: var(--body); overflow: hidden; }
+#view {
+  position: fixed; inset: 0; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+#stage {
+  position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
+  transform-origin: 50% 50%; overflow: hidden; background: var(--ink);
+  background-image: radial-gradient(circle at 1px 1px, rgba(149,162,177,.09) 1px, transparent 0);
+  background-size: 48px 48px;
+}
+:fullscreen #stage { box-shadow: none; }
+
+/* ---------- slides ---------- */
+.slide {
+  position: absolute; inset: 0; padding: 96px 128px 120px; display: flex; flex-direction: column; gap: 40px;
+  opacity: 0; visibility: hidden; transform: translateX(0);
+  transition: opacity .55s var(--ease), transform .75s var(--ease), filter .75s var(--ease), visibility 0s linear .75s;
+}
+.slide.active { opacity: 1; visibility: visible; transform: none; filter: none; transition-delay: 0s; }
+.slide.enter-r { transform: translateX(120px); opacity: 0; transition: none; }
+.slide.enter-l { transform: translateX(-120px); opacity: 0; transition: none; }
+.slide.exit-l { transform: translateX(-120px); opacity: 0; }
+.slide.exit-r { transform: translateX(120px); opacity: 0; }
+.slide[data-tr="zoom"].enter-r, .slide[data-tr="zoom"].enter-l { transform: scale(1.12); filter: blur(12px); }
+.slide[data-tr="zoom"].exit-l, .slide[data-tr="zoom"].exit-r { transform: scale(.92); filter: blur(8px); }
+.notes { display: none; }
+
+h1, h2, h3 { margin: 0; font-family: var(--display); text-wrap: balance; letter-spacing: -.01em; }
+h2.t { font-size: 66px; font-weight: 700; line-height: 1.05; }
+h2.t .k { color: var(--git); }
+p { margin: 0; }
+.eyebrow { font-family: var(--mono); font-size: 22px; color: var(--git); letter-spacing: .14em; text-transform: uppercase; }
+.lead { font-size: 34px; color: var(--mute); line-height: 1.4; max-width: 1300px; }
+.mono, code { font-family: var(--mono); }
+code { color: var(--git); font-size: .92em; }
+.mute { color: var(--mute); }
+.row { display: flex; gap: 32px; }
+.col { display: flex; flex-direction: column; gap: 24px; }
+.grow { flex: 1; min-width: 0; }
+
+/* entrance stagger when a slide becomes active */
+.slide.active .r { animation: rise .8s var(--ease) both; animation-delay: calc(var(--i, 0) * 90ms + 150ms); }
+@keyframes rise { from { opacity: 0; transform: translateY(36px); } to { opacity: 1; transform: none; } }
+
+/* ---------- step fragments ---------- */
+[data-in] { opacity: 0; transform: translateY(26px); transition: opacity .5s var(--ease), transform .65s var(--ease), clip-path .8s var(--ease); }
+[data-in].on { opacity: 1; transform: none; }
+[data-in][data-fx="pop"] { transform: scale(.7); }
+[data-in][data-fx="left"] { transform: translateX(-60px); }
+[data-in][data-fx="right"] { transform: translateX(60px); }
+[data-in][data-fx="wipe"] { transform: none; clip-path: inset(0 100% 0 0); }
+[data-in][data-fx="wipe"].on { clip-path: inset(0 0 0 0); }
+[data-in][data-fx="pop"].on, [data-in][data-fx="left"].on, [data-in][data-fx="right"].on { transform: none; }
+[data-in][data-fx="shake"].on { animation: shake .6s .15s; }
+@keyframes shake { 20%, 60% { transform: translateX(-10px); } 40%, 80% { transform: translateX(10px); } }
+[data-out].gone { opacity: 0 !important; transform: translateY(-16px) !important; pointer-events: none; }
+.dim { transition: opacity .5s; }
+.dim.dimmed { opacity: .28; }
+.cap { position: absolute; inset: 0; opacity: 0; transform: translateY(14px); transition: opacity .45s var(--ease), transform .55s var(--ease); }
+.cap.act { opacity: 1; transform: none; }
+.typing::after { content: "▍"; color: var(--git); animation: blink .8s steps(1) infinite; margin-left: 2px; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- components ---------- */
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 32px 36px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.card h3 { font-size: 34px; font-weight: 700; }
+.card p { font-size: 27px; line-height: 1.45; color: var(--mute); }
+.badge { width: 60px; height: 60px; border-radius: 50%; display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 26px; color: var(--ink); background: var(--git); flex: none; }
+.badge.g { background: var(--green); } .badge.r { background: var(--red); } .badge.b { background: var(--blue); } .badge.v { background: var(--violet); } .badge.n { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); }
+.badge svg { width: 30px; height: 30px; stroke: currentColor; fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.hrow { display: flex; align-items: center; gap: 20px; }
+
+.term { background: #0a0d10; border: 1px solid var(--line); border-radius: 18px; padding: 26px 30px; font-family: var(--mono); font-size: 26px; line-height: 1.6; overflow: hidden; position: relative; min-width: 0; }
+.term .bar { display: flex; gap: 10px; margin: -8px 0 16px; }
+.term .bar i { width: 14px; height: 14px; border-radius: 50%; background: var(--line); display: block; }
+.term .ln { white-space: pre; min-height: 1.6em; }
+.term .ps { color: var(--git); margin-right: 14px; }
+.term .c { color: var(--amber); }
+.term .ok { color: var(--green); } .term .bad { color: var(--red); } .term .b { color: var(--blue); }
+.term .o { color: var(--mute); }
+.term.auto .ln { visibility: hidden; }
+.term.auto .ln.shown { visibility: visible; }
+
+.pill { display: inline-flex; align-items: center; gap: 10px; padding: 8px 18px; border-radius: 999px; font-family: var(--mono); font-size: 24px; font-weight: 600; background: var(--panel2); border: 1px solid var(--line); }
+.rule { background: var(--git); color: var(--ink); border-radius: 20px; padding: 26px 36px; font-size: 32px; font-weight: 700; font-family: var(--display); }
+.rule.dark { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); }
+.rule code { color: inherit; background: rgba(0,0,0,.14); padding: 2px 10px; border-radius: 8px; }
+
+table.tb { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 27px; }
+table.tb th { text-align: left; font-family: var(--mono); font-size: 20px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); padding: 0 24px 14px; font-weight: 600; }
+table.tb td { padding: 17px 24px; border-top: 1px solid var(--line); vertical-align: middle; line-height: 1.35; }
+table.tb td:first-child { font-family: var(--mono); color: var(--fg); font-weight: 600; white-space: nowrap; }
+table.tb tr.hl td { background: rgba(240,80,51,.08); }
+
+.chk .badge { transition: background .4s, color .4s, transform .5s cubic-bezier(.3,1.6,.5,1); }
+.chk.done .badge { background: var(--green); color: var(--ink); border-color: transparent; transform: scale(1.12); }
+.chk { transition: border-color .4s; }
+.chk.done { border-color: rgba(69,196,111,.55); }
+.term .ln.hl { background: rgba(69,196,111,.16); margin: 0 -30px; padding: 0 30px; transition: background .5s; }
+.term .ln.hlx { transition: background .5s; }
+
+.tk { border-radius: 6px; transition: background .4s, box-shadow .4s; }
+.tk.hl { background: rgba(240,80,51,.22); box-shadow: 0 0 0 2px var(--git); }
+.term .ln.tk.bad2 { background: rgba(255,97,97,.18); box-shadow: inset 4px 0 0 var(--red); }
+.term .ln.act { background: rgba(240,80,51,.16); margin: 0 -30px; padding: 0 30px; }
+.hk2 { font-family: var(--mono); font-size: 25px; font-weight: 700; padding: 16px 22px; border-radius: 16px; border: 2px solid var(--line); background: var(--panel); color: var(--mute); white-space: nowrap; transition: all .45s var(--ease); }
+.hk2.hook { border-color: rgba(240,80,51,.55); }
+.hk2.lit { color: var(--fg); background: var(--panel2); transform: translateY(-4px); }
+.hk2.hook.lit { background: var(--git); color: var(--ink); border-color: var(--git); box-shadow: 0 10px 30px rgba(240,80,51,.35); }
+.hk2.done.lit { background: var(--green); color: var(--ink); border-color: var(--green); }
+.hk2.fail { background: var(--red) !important; color: var(--ink) !important; border-color: var(--red) !important; }
+.hk2.off { opacity: .25; transform: none; background: var(--panel) !important; color: var(--mute) !important; border-color: var(--line) !important; box-shadow: none !important; }
+.pill.ci { font-size: 25px; padding: 12px 22px; transition: all .4s var(--ease); }
+.pill.ci.pass { background: var(--green); color: var(--ink); border-color: var(--green); }
+.gl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 56px; }
+.gl > div { display: grid; grid-template-columns: 290px 1fr; gap: 20px; align-items: baseline; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.gl b { font-family: var(--mono); font-size: 27px; color: var(--git); }
+.gl span { font-size: 26px; line-height: 1.4; }
+
+/* graph scenes */
+svg.graph { display: block; overflow: visible; }
+svg.graph text { font-family: var(--mono); }
+svg.graph .gn text { font-size: 22px; font-weight: 700; }
+svg.graph .ghost circle { stroke-dasharray: 6 6; }
+
+/* divider */
+.divider { justify-content: center; gap: 28px; }
+.divider .num { font-family: var(--display); font-weight: 800; font-size: 300px; line-height: .85; color: transparent; -webkit-text-stroke: 3px var(--git); position: relative; width: max-content; }
+.divider .num::after { content: attr(data-n); position: absolute; inset: 0; color: var(--git); -webkit-text-stroke: 0; clip-path: inset(100% 0 0 0); }
+.slide.active.divider .num::after { animation: fillup 1.1s .35s var(--ease) forwards; }
+@keyframes fillup { to { clip-path: inset(0 0 0 0); } }
+.divider h2 { font-size: 104px; font-weight: 800; line-height: 1; }
+.divider p { font-size: 36px; color: var(--mute); max-width: 1100px; }
+.deco { position: absolute; right: 120px; top: 0; height: 100%; width: 520px; pointer-events: none; }
+.deco path { fill: none; stroke-width: 4; stroke-linecap: round; }
+.slide.active .deco path { stroke-dasharray: 1400; stroke-dashoffset: 1400; animation: draw 1.8s .2s var(--ease) forwards; }
+.slide.active .deco circle { opacity: 0; animation: popin .5s var(--ease) forwards; animation-delay: calc(var(--d) * 1ms + 300ms); }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes popin { from { opacity: 0; transform: scale(.2); } to { opacity: 1; transform: none; } }
+.deco circle { transform-box: fill-box; transform-origin: center; }
+
+/* ---------- chrome around the stage ---------- */
+#hud { position: absolute; left: 128px; right: 128px; bottom: 40px; display: flex; align-items: center; gap: 28px; font-family: var(--mono); font-size: 20px; color: var(--mute); pointer-events: none; }
+#hud .sec { white-space: nowrap; }
+#hud .track { flex: 1; height: 4px; background: var(--line); border-radius: 4px; position: relative; overflow: hidden; }
+#hud .fill { position: absolute; inset: 0 auto 0 0; background: var(--git); width: 0; transition: width .6s var(--ease); }
+#hud .dots { display: flex; gap: 8px; }
+#hud .dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: block; transition: background .3s; }
+#hud .dots i.on { background: var(--git); }
+.nohud #hud { opacity: 0; }
+
+#ctl { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; z-index: 30; transition: opacity .4s; }
+#ctl button, #ov button.close { font: 600 14px var(--body); color: var(--fg); background: rgba(29,36,46,.92); border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; cursor: pointer; }
+#ctl button:hover { border-color: var(--git); }
+button:focus-visible { outline: 2px solid var(--git); outline-offset: 2px; }
+body.idle #ctl { opacity: 0; }
+body.idle { cursor: none; }
+
+#notes { position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(68px + env(safe-area-inset-bottom, 0px)); max-width: 1100px; margin: 0 auto; background: rgba(21,26,33,.96); border: 1px solid var(--line); border-radius: 16px; padding: 18px 22px; z-index: 31; font-size: 16px; line-height: 1.55; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+#notes .meta { display: flex; justify-content: space-between; gap: 16px; font-family: var(--mono); font-size: 13px; color: var(--mute); margin-bottom: 8px; flex-wrap: wrap; }
+#notes .txt { max-height: 30vh; overflow: auto; }
+
+#ov { position: fixed; inset: 0; z-index: 40; background: rgba(12,15,19,.97); overflow: auto; padding: 40px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px)); }
+#ov .wrap { max-width: 1200px; margin: 0 auto; display: grid; gap: 28px; }
+#ov h3 { font: 600 13px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--git); margin: 0 0 10px; }
+#ov .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+#ov .grid button { text-align: left; font: 500 14px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; display: flex; gap: 10px; }
+#ov .grid button span { color: var(--mute); font-family: var(--mono); }
+#ov .grid button.cur { border-color: var(--git); }
+#ov .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+#ov .top p { color: var(--mute); font-size: 14px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide, [data-in], .cap { transition-duration: .01s !important; }
+  .slide.active .r, .slide.active .deco path, .slide.active .deco circle, .slide.active.divider .num::after { animation-duration: .01s !important; animation-delay: 0s !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="view"><div id="stage">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></symbol>
+  <symbol id="i-merge" viewBox="0 0 24 24"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 0 0 9 9"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></symbol>
+  <symbol id="i-at" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.92 7.94"/></symbol>
+  <symbol id="i-line" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></symbol>
+  <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+</svg>
+
+<!-- ============ COVER ============ -->
+<section class="slide" data-sec="Mở đầu" data-tr="zoom" data-title="Git cho team dev" style="justify-content:center">
+  <canvas id="coverfx" width="1920" height="1080" style="position:absolute;inset:0;opacity:.9;-webkit-mask-image:linear-gradient(90deg,transparent 0%,transparent 42%,#000 80%);mask-image:linear-gradient(90deg,transparent 0%,transparent 42%,#000 80%)"></canvas>
+  <p class="eyebrow r">Buổi chia sẻ nội bộ · khoảng 90 phút</p>
+  <h1 class="r" style="font-size:176px;font-weight:800;line-height:.92;max-width:1300px">Git cho<br><span style="color:var(--git)">team dev</span></h1>
+  <p class="lead r" style="max-width:1000px">Từ mô hình tư duy đến xử lý sự cố: biết lúc nào cần làm gì, và gõ lệnh nào.</p>
+  <p class="r mono mute" style="font-size:22px;margin-top:24px">→ phím mũi tên để chuyển · N ghi chú · O mục lục · F toàn màn hình</p>
+  <aside class="notes">Mục tiêu: sau 60 phút, mỗi dev tự tin với vòng làm việc hằng ngày, viết commit và đặt tên nhánh theo quy ước chung, và tự xử lý các sự cố hay gặp (conflict, commit nhầm, mất commit). Hỏi nhanh khán giả: ai từng xoá repo clone lại vì Git "hỏng"? Đó là lý do buổi này bắt đầu từ mô hình tư duy.</aside>
+</section>
+
+<!-- ============ ROADMAP ============ -->
+<section class="slide" data-sec="Mở đầu" data-title="Lộ trình" data-steps="4" data-scene="roadmap">
+  <h2 class="t r">Lộ trình: 5 chặng, mỗi chặng xây trên chặng trước</h2>
+  <div style="position:relative;flex:1">
+    <svg class="graph" id="road" width="1664" height="560"></svg>
+  </div>
+  <aside class="notes">Lộ trình vẽ như một nhánh Git: mỗi chặng là một commit. Bấm để từng chặng hiện ra. Chặng 1 là nền: hiểu Git lưu gì thì các lệnh ở chặng 2 và cách cứu ở chặng 4 trở nên dễ đoán thay vì phải học thuộc. Chặng 3 là quy ước team, chặng 5 là những điều không thể hoàn tác.</aside>
+</section>
+
+<!-- ============ 01 ============ -->
+<section class="slide divider" data-sec="01 · Mô hình tư duy" data-tr="zoom" data-title="01 Mô hình tư duy">
+  <div class="num" data-n="01">01</div>
+  <h2>Mô hình tư duy</h2>
+  <p>Hiểu Git lưu gì, thì mọi lệnh đều dễ đoán.</p>
+  <svg class="deco" viewBox="0 0 520 1080"><path d="M160 140 V940" stroke="#2b3440"/><path d="M160 360 C160 430 360 400 360 480 V620 C360 700 160 680 160 760" stroke="#f05033"/><circle cx="160" cy="220" r="22" fill="#e9edf1" style="--d:0"/><circle cx="160" cy="360" r="22" fill="#e9edf1" style="--d:150"/><circle cx="360" cy="500" r="22" fill="#f05033" style="--d:450"/><circle cx="360" cy="620" r="22" fill="#f05033" style="--d:600"/><circle cx="160" cy="760" r="22" fill="#e9edf1" style="--d:900"/><circle cx="160" cy="880" r="22" fill="#e9edf1" style="--d:1050"/></svg>
+  <aside class="notes">Phần này ít lệnh. Mục tiêu là có một bức tranh đúng trong đầu: commit, staging, branch, remote. Hầu hết sự hoảng loạn với Git đến từ việc không biết mình đang đứng ở đâu trong bức tranh này.</aside>
+</section>
+
+<!-- snapshot -->
+<section class="slide" data-sec="01 · Mô hình tư duy" data-title="Commit là ảnh chụp" data-steps="4" data-scene="snapshot">
+  <h2 class="t r">Commit là <span class="k">ảnh chụp</span>, không phải bản vá</h2>
+  <div class="row grow" style="gap:64px;align-items:flex-start">
+    <div class="col grow" style="gap:30px;font-size:31px;line-height:1.45;padding-top:8px">
+      <div class="hrow" data-in="1" data-fx="left"><span class="badge"><svg><use href="#i-layers"/></svg></span><p><b>Snapshot</b> toàn bộ project, kèm tác giả, thời gian, message và commit cha</p></div>
+      <div class="hrow" data-in="2" data-fx="left"><span class="badge b"><svg><use href="#i-key"/></svg></span><p><b>Hash</b> tính từ nội dung: nội dung đổi một ký tự, hash đổi hoàn toàn</p></div>
+      <div class="hrow" data-in="3" data-fx="left"><span class="badge v"><svg><use href="#i-edit"/></svg></span><p>Nên <b>không sửa được commit</b>: "sửa" là tạo commit mới. Gốc của mọi cảnh báo về viết lại lịch sử</p></div>
+      <div class="hrow" data-in="4" data-fx="left"><span class="badge g"><svg><use href="#i-down"/></svg></span><p><b>Phân tán:</b> mỗi máy có đủ lịch sử, commit và xem log không cần mạng</p></div>
+    </div>
+    <div class="card r" style="width:640px;flex:none;padding:36px 40px;gap:0;font-family:var(--mono);font-size:26px">
+      <div class="hrow" style="margin-bottom:26px"><span class="badge" style="width:48px;height:48px"></span><span style="font-size:30px;font-weight:700">commit <span id="snapHash" style="color:var(--git)">9f8e7d6</span></span></div>
+      <div style="display:grid;grid-template-columns:150px 1fr;row-gap:16px">
+        <span style="color:var(--git)">tree</span><span>4b825dc <span class="mute">(snapshot)</span></span>
+        <span style="color:var(--git)">parent</span><span>a1b2c3d</span>
+        <span style="color:var(--git)">author</span><span>An &lt;an@team.dev&gt;</span>
+        <span style="color:var(--git)">date</span><span>2026-10-23 09:14</span>
+        <span style="color:var(--git)">message</span><span id="snapMsg">feat(cart): add coupon</span>
+      </div>
+      <p class="mono" data-in="2" style="margin-top:28px;font-size:22px;color:var(--mute)">hash = SHA-1( tree + parent + author + message )</p>
+    </div>
+  </div>
+  <aside class="notes">Bấm từng ý. Ở ý 2, nhìn sang thẻ bên phải: chỉ thêm một chữ "s" vào message, hash đổi hoàn toàn. Vì hash tính từ nội dung, commit không bao giờ bị sửa: "sửa" thực chất là tạo commit mới với hash mới. Đây là gốc của mọi cảnh báo về viết lại lịch sử ở phần sau. Git phân tán: mỗi máy có toàn bộ lịch sử, nên commit, xem log, tạo nhánh đều chạy offline.</aside>
+</section>
+
+<!-- four zones -->
+<section class="slide" data-sec="01 · Mô hình tư duy" data-title="Bốn vùng" data-steps="4" data-scene="zones">
+  <h2 class="t r">Một thay đổi đi qua <span class="k">bốn vùng</span></h2>
+  <div class="r" style="position:relative;height:330px" id="zones">
+    <div class="zcmds" style="position:absolute;left:0;right:0;top:0;height:60px"></div>
+  </div>
+  <div class="row r" style="gap:40px;flex:1;min-height:0">
+    <div class="grow" style="position:relative">
+      <div class="cap" data-at="0"><p class="eyebrow">Bước 1</p><h3 style="font-size:46px;margin:12px 0">Sửa file</h3><p class="lead">Thay đổi chỉ nằm ở working directory. Git chưa lưu gì cả.</p></div>
+      <div class="cap" data-at="1"><p class="eyebrow">Bước 2 · git add</p><h3 style="font-size:46px;margin:12px 0">Đưa vào staging</h3><p class="lead">Bản nháp của commit kế tiếp. Chọn từng đoạn bằng <code>git add -p</code>.</p></div>
+      <div class="cap" data-at="2"><p class="eyebrow">Bước 3 · git commit</p><h3 style="font-size:46px;margin:12px 0">Chốt thành snapshot</h3><p class="lead">Có hash, nằm trong <code>.git</code> ở máy bạn. Lỡ tay vẫn cứu được. Chưa ai thấy.</p></div>
+      <div class="cap" data-at="3"><p class="eyebrow">Bước 4 · git push</p><h3 style="font-size:46px;margin:12px 0">Lên remote</h3><p class="lead">Đồng đội fetch được. Từ đây đừng viết lại lịch sử nữa.</p></div>
+      <div class="cap" data-at="4"><p class="eyebrow">Chiều ngược lại</p><h3 style="font-size:46px;margin:12px 0">Lệnh nào cũng có đường về</h3><p class="lead">Khi bối rối: <code>git status</code> luôn nói thay đổi đang ở vùng nào.</p></div>
+    </div>
+    <div class="term" style="width:760px;flex:none">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln"><span class="ps">$</span>git status</div>
+      <div style="position:relative;height:150px">
+        <div class="cap" data-at="0"><div class="ln o">Changes not staged for commit:</div><div class="ln bad">    modified:   login.ts</div></div>
+        <div class="cap" data-at="1"><div class="ln o">Changes to be committed:</div><div class="ln ok">    modified:   login.ts</div></div>
+        <div class="cap" data-at="2"><div class="ln o">Your branch is ahead of 'origin/main'</div><div class="ln o">by 1 commit.</div><div class="ln ok">nothing to commit, working tree clean</div></div>
+        <div class="cap" data-at="3,4"><div class="ln o">Your branch is up to date with</div><div class="ln o">'origin/main'.</div><div class="ln ok">nothing to commit, working tree clean</div></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Theo dõi chip login.ts bay qua từng vùng, và terminal bên phải đổi theo. Bước 1: sửa file, thay đổi chỉ ở working directory, git status hiện màu đỏ. Bước 2: git add đưa vào staging, bản nháp commit kế tiếp; staging cho phép commit một phần. Bước 3: git commit chốt thành snapshot có hash; chip đổi thành hash. Bước 4: git push, đồng đội fetch được, từ đây viết lại lịch sử là nguy hiểm. Bước 5: các mũi tên ngược: restore, restore --staged, fetch/pull.</aside>
+</section>
+
+<!-- branch pointer -->
+<section class="slide" data-sec="01 · Mô hình tư duy" data-title="Branch là con trỏ" data-steps="3" data-scene="pointer">
+  <h2 class="t r">Branch chỉ là <span class="k">con trỏ</span> tới một commit</h2>
+  <div class="term r" style="padding:18px 28px"><div class="ln" style="position:relative;height:1.6em">
+    <span class="cap" data-at="0"><span class="ps">$</span><span class="typed">git status   # On branch feat/login</span></span>
+    <span class="cap" data-at="1"><span class="ps">$</span><span class="typed">git commit -m "feat(login): remember me"</span></span>
+    <span class="cap" data-at="2"><span class="ps">$</span><span class="typed">git switch main</span></span>
+    <span class="cap" data-at="3"><span class="ps">$</span><span class="typed">git switch --detach C</span></span>
+  </div></div>
+  <div class="row grow" style="gap:48px">
+    <svg class="graph r" id="gPointer" width="1040" height="500"></svg>
+    <div class="grow" style="position:relative">
+      <div class="cap" data-at="0"><h3 style="font-size:40px">HEAD → feat/login → F</h3><p class="lead" style="margin-top:16px">Branch là một file nhỏ ghi hash của commit mới nhất. HEAD cho biết bạn đang đứng ở đâu.</p></div>
+      <div class="cap" data-at="1"><h3 style="font-size:40px">Commit mới, con trỏ nhích lên</h3><p class="lead" style="margin-top:16px">G ra đời, feat/login và HEAD trượt sang G. main đứng yên. Tạo nhánh gần như miễn phí.</p></div>
+      <div class="cap" data-at="2"><h3 style="font-size:40px">Chuyển nhánh = dời HEAD</h3><p class="lead" style="margin-top:16px">Không có commit nào bị copy. Git chỉ đổi file trong thư mục cho khớp commit D.</p></div>
+      <div class="cap" data-at="3"><h3 style="font-size:40px;color:var(--red)">Detached HEAD</h3><p class="lead" style="margin-top:16px">HEAD trỏ thẳng vào commit. Commit ở đây dễ thất lạc; muốn giữ thì <code>git switch -c &lt;tên&gt;</code>.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Branch không chứa code; nó chỉ ghi hash commit mới nhất. Bấm lần 1: commit G, con trỏ feat/login và HEAD cùng trượt sang G, main đứng yên. Lần 2: git switch main chỉ dời HEAD. Lần 3: detached HEAD, HEAD trỏ thẳng vào commit C. Commit làm ở đây không có tên nào giữ, nên dễ thất lạc; muốn giữ thì tạo nhánh.</aside>
+</section>
+
+<!-- fetch vs pull -->
+
+<section class="slide" data-sec="01 · Mô hình tư duy" data-title="Gọi tên commit" data-steps="4" data-scene="names">
+  <h2 class="t r">Gọi tên commit: <span class="k">HEAD~1</span>, <span class="k">origin/main</span></h2>
+  <div class="row grow" style="gap:48px">
+    <div class="col" style="width:1000px;flex:none;gap:24px">
+      <svg class="graph r" id="gNames" width="1000" height="380"></svg>
+      <div class="term r" style="font-size:26px"><div style="position:relative;height:84px">
+        <div class="cap" data-at="0"><div class="ln"><span class="ps">$</span><span class="typed">git show HEAD</span></div><div class="ln o">  commit D, nơi bạn đang đứng</div></div>
+        <div class="cap" data-at="1"><div class="ln"><span class="ps">$</span><span class="typed">git show HEAD~1</span></div><div class="ln o">  commit C, cha của D</div></div>
+        <div class="cap" data-at="2"><div class="ln"><span class="ps">$</span><span class="typed">git diff HEAD~3 HEAD</span></div><div class="ln o">  mọi thay đổi từ A tới D</div></div>
+        <div class="cap" data-at="3"><div class="ln"><span class="ps">$</span><span class="typed">git log --oneline origin/main..main</span></div><div class="ln o">  C, D: hai commit bạn chưa push</div></div>
+        <div class="cap" data-at="4"><div class="ln"><span class="ps">$</span><span class="typed">git reset --soft HEAD~1</span></div><div class="ln o">  "lùi con trỏ về C", giữ thay đổi</div></div>
+      </div></div>
+    </div>
+    <div class="grow" style="position:relative">
+<div class="cap" data-at="0"><p class="eyebrow">HEAD</p><h3 style="font-size:40px;margin:12px 0">Bạn đang đứng ở đâu</h3><p class="lead" style="font-size:30px">HEAD trỏ vào nhánh hiện tại, nhánh trỏ vào commit mới nhất: D.</p></div>
+<div class="cap" data-at="1"><p class="eyebrow">~1 = lùi 1 bước</p><h3 style="font-size:40px;margin:12px 0">HEAD~1 là C</h3><p class="lead" style="font-size:30px">Dấu ~ đi ngược về commit cha. HEAD~1 = commit ngay trước HEAD.</p></div>
+<div class="cap" data-at="2"><p class="eyebrow">~3 = lùi 3 bước</p><h3 style="font-size:40px;margin:12px 0">HEAD~3 là A</h3><p class="lead" style="font-size:30px">Đếm ngược ba lần theo cha. Dùng hash ngắn cũng được: git show a1b2c3d.</p></div>
+<div class="cap" data-at="3"><p class="eyebrow">origin/main</p><h3 style="font-size:40px;margin:12px 0">Bản chụp server</h3><p class="lead" style="font-size:30px">origin là tên mặc định của remote. origin/main = main trên server ở lần fetch cuối, đang ở B.</p></div>
+<div class="cap" data-at="4"><p class="eyebrow">Dùng ở đâu</p><h3 style="font-size:40px;margin:12px 0">Mọi lệnh nhận commit</h3><p class="lead" style="font-size:30px">reset, diff, show, log, rebase, cherry-pick đều nhận HEAD~n, tên nhánh hoặc hash.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Trước khi học reset hay rebase, cần biết cách gọi tên một commit. HEAD là nơi bạn đứng. Dấu ngã cộng số là lùi bao nhiêu bước theo commit cha: HEAD~1 là commit trước, HEAD~3 là ba bước trước. origin là tên mặc định Git đặt cho server khi bạn clone; origin/main là bản chụp nhánh main của server ở lần fetch cuối. origin/main..main nghĩa là "các commit có ở main mà origin/main chưa có", tức là chưa push.</aside>
+</section>
+
+<section class="slide" data-sec="01 · Mô hình tư duy" data-title="Fetch khác pull" data-steps="2" data-scene="fetch">
+  <h2 class="t r">Local và remote: <span class="k">fetch</span> khác <span class="k">pull</span></h2>
+  <div class="row grow" style="gap:40px">
+    <svg class="graph r" id="gFetch" width="1100" height="560"></svg>
+    <div class="grow" style="position:relative">
+      <div class="cap" data-at="0"><p class="eyebrow">Trước</p><h3 style="font-size:40px;margin:12px 0">Đồng đội vừa push C, D</h3><p class="lead">Máy bạn chưa biết gì. <code>origin/main</code> là bản chụp remote ở lần fetch cuối.</p></div>
+      <div class="cap" data-at="1"><p class="eyebrow">git fetch</p><h3 style="font-size:40px;margin:12px 0">Tải về, không đụng code</h3><p class="lead">C, D về máy, <code>origin/main</code> nhích lên. <code>main</code> của bạn đứng yên. Luôn an toàn.</p></div>
+      <div class="cap" data-at="2"><p class="eyebrow">git pull = fetch + merge</p><h3 style="font-size:40px;margin:12px 0">Cập nhật nhánh của bạn</h3><p class="lead"><code>main</code> trượt lên D. Có thể sinh conflict. Nên đặt <code>pull.rebase = true</code>.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Lane trên là server, lane dưới là máy bạn. Lần bấm 1, git fetch: commit C, D bay từ server về máy, origin/main nhích lên D, nhưng main của bạn đứng yên ở B, code đang làm không bị đụng. Lần bấm 2, git pull: main trượt lên D. Thói quen tốt: fetch trước, xem có gì mới, rồi mới quyết định merge hay rebase.</aside>
+</section>
+
+<!-- ============ 02 ============ -->
+
+<section class="slide" data-sec="01 · Mô hình tư duy" data-title="Upstream: ahead và behind" data-steps="3">
+  <h2 class="t r">Upstream: <span class="k">ahead</span> và <span class="k">behind</span> là gì</h2>
+  <div class="term r" style="font-size:27px">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="ln"><span class="ps">$</span>git push -u origin HEAD</div>
+    <div class="ln o">branch 'feat/login' set up to track 'origin/feat/login'.</div>
+    <div class="ln"> </div>
+    <div class="ln"><span class="ps">$</span>git branch -vv</div>
+    <div class="ln">* feat/login 9f8e7d6 <span class="tk" data-add="1:hl">[origin/feat/login</span>: <span class="tk" data-add="2:hl">ahead 2</span>, <span class="tk" data-add="3:hl">behind 1</span>] feat(login): remember me</div>
+    <div class="ln">  main       a1b2c3d [origin/main] chore: bump deps</div>
+  </div>
+  <div class="grow r" style="position:relative">
+<div class="cap" data-at="0"><p class="eyebrow">git push -u</p><h3 style="font-size:40px;margin:12px 0">-u gắn nhánh với một nhánh trên server</h3><p class="lead" style="font-size:30px">Từ đó git push, git pull, git status biết so với đâu. Nhánh trên server đó gọi là upstream.</p></div>
+<div class="cap" data-at="1"><p class="eyebrow">Upstream</p><h3 style="font-size:40px;margin:12px 0">origin/feat/login</h3><p class="lead" style="font-size:30px">Nhánh của bạn đang theo dõi nhánh cùng tên trên server.</p></div>
+<div class="cap" data-at="2"><p class="eyebrow">ahead 2</p><h3 style="font-size:40px;margin:12px 0">Bạn có 2 commit server chưa có</h3><p class="lead" style="font-size:30px">Cần git push.</p></div>
+<div class="cap" data-at="3"><p class="eyebrow">behind 1</p><h3 style="font-size:40px;margin:12px 0">Server có 1 commit bạn chưa có</h3><p class="lead" style="font-size:30px">Thường do đồng đội push. Cần git pull --rebase trước, rồi mới push.</p></div>
+  </div>
+  <aside class="notes">Đây là thông tin quan trọng nhất trong git status mà nhiều người bỏ qua. -u ở lần push đầu gắn nhánh local với nhánh trên server (upstream). Sau đó Git đếm: ahead là số commit bạn có mà server chưa có, behind là ngược lại. Cả ahead lẫn behind cùng lúc nghĩa là hai bên đã rẽ nhánh: pull --rebase rồi push.</aside>
+</section>
+
+<section class="slide divider" data-sec="02 · Lệnh hằng ngày" data-tr="zoom" data-title="02 Lệnh hằng ngày">
+  <div class="num" data-n="02">02</div>
+  <h2>Lệnh hằng ngày</h2>
+  <p>Một vòng làm việc chuẩn, từ lúc nhận task đến lúc mở merge request.</p>
+  <svg class="deco" viewBox="0 0 520 1080"><path d="M160 140 V940" stroke="#2b3440"/><path d="M160 300 C160 380 360 350 360 430 V700 C360 780 160 760 160 840" stroke="#59a8ff"/><circle cx="160" cy="200" r="22" fill="#e9edf1" style="--d:0"/><circle cx="160" cy="300" r="22" fill="#e9edf1" style="--d:150"/><circle cx="360" cy="460" r="22" fill="#59a8ff" style="--d:450"/><circle cx="360" cy="580" r="22" fill="#59a8ff" style="--d:600"/><circle cx="360" cy="700" r="22" fill="#59a8ff" style="--d:750"/><circle cx="160" cy="840" r="22" fill="#e9edf1" style="--d:1050"/></svg>
+  <aside class="notes">Bộ lệnh dùng 95% thời gian. Không cần nhớ hết tuỳ chọn, chỉ cần nhớ vòng làm việc và câu hỏi mỗi lệnh trả lời.</aside>
+</section>
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="Thiết lập một lần" data-steps="7">
+  <h2 class="t r">Thiết lập <span class="k">một lần</span> cho mỗi máy</h2>
+  <div class="term r" style="font-size:25px">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div class="ln" data-at="1"><span class="ps">$</span>git config --global user.name  "Nguyen Van An"</div>
+    <div class="ln" data-at="1"><span class="ps">$</span>git config --global user.email "an@company.com"</div>
+    <div class="ln" data-at="2"><span class="ps">$</span>git config --global init.defaultBranch main</div>
+    <div class="ln" data-at="3"><span class="ps">$</span>git config --global pull.rebase true</div>
+    <div class="ln" data-at="4"><span class="ps">$</span>git config --global fetch.prune true</div>
+    <div class="ln" data-at="5"><span class="ps">$</span>git config --global rerere.enabled true</div>
+    <div class="ln" data-at="6"><span class="ps">$</span>git config --global core.editor "code --wait"</div>
+    <div class="ln" data-at="7"><span class="ps">$</span>ssh-keygen -t ed25519 -C "an@company.com"</div>
+  </div>
+  <div class="grow r" style="position:relative">
+    <div class="cap" data-at="0"><p class="eyebrow">--global</p><h3 style="font-size:40px;margin:12px 0">Áp cho mọi repo trên máy</h3><p class="lead" style="font-size:30px">Lưu ở <code>~/.gitconfig</code>. Bỏ <code>--global</code> thì chỉ áp cho repo hiện tại. Bấm để xem từng dòng làm gì.</p></div>
+    <div class="cap" data-at="1"><p class="eyebrow">user.name / user.email</p><h3 style="font-size:40px;margin:12px 0">Tên và email ghi vào mọi commit</h3><p class="lead" style="font-size:30px">Email phải trùng email tài khoản GitLab, nếu không commit hiện là người lạ, không có avatar.</p></div>
+    <div class="cap" data-at="2"><p class="eyebrow">init.defaultBranch</p><h3 style="font-size:40px;margin:12px 0">Repo mới tạo dùng nhánh main</h3><p class="lead" style="font-size:30px">Thay vì <code>master</code>, để khớp với GitLab và GitHub.</p></div>
+    <div class="cap" data-at="3"><p class="eyebrow">pull.rebase</p><h3 style="font-size:40px;margin:12px 0">git pull = fetch + rebase</h3><p class="lead" style="font-size:30px">Tránh commit rác kiểu <code>Merge branch 'main' of gitlab…</code> mỗi lần pull.</p></div>
+    <div class="cap" data-at="4"><p class="eyebrow">fetch.prune</p><h3 style="font-size:40px;margin:12px 0">Dọn nhánh đã xoá trên server</h3><p class="lead" style="font-size:30px">MR merge xong, nhánh trên server bị xoá thì <code>origin/feat/…</code> ở máy cũng biến mất.</p></div>
+    <div class="cap" data-at="5"><p class="eyebrow">rerere = reuse recorded resolution</p><h3 style="font-size:40px;margin:12px 0">Git nhớ cách bạn giải conflict</h3><p class="lead" style="font-size:30px">Gặp lại đúng conflict đó (hay xảy ra khi rebase nhiều lần), Git tự áp lại cách giải cũ.</p></div>
+    <div class="cap" data-at="6"><p class="eyebrow">core.editor</p><h3 style="font-size:40px;margin:12px 0">Editor mở khi viết message</h3><p class="lead" style="font-size:30px">Dùng cho <code>git commit</code> không có <code>-m</code> và <code>rebase -i</code>. <code>--wait</code>: chờ bạn đóng tab.</p></div>
+    <div class="cap" data-at="7"><p class="eyebrow">SSH key</p><h3 style="font-size:40px;margin:12px 0">Đăng nhập bằng khoá, bỏ mật khẩu</h3><p class="lead" style="font-size:30px">Dán nội dung <code>~/.ssh/id_ed25519.pub</code> vào GitLab › Preferences › SSH Keys, rồi thử <code>ssh -T git@gitlab.com</code>.</p></div>
+  </div>
+  <aside class="notes">Mỗi lần bấm sáng một dòng config và giải thích nó làm gì. --global lưu vào ~/.gitconfig, áp cho mọi repo. Quan trọng nhất là email đúng tài khoản và pull.rebase. rerere nghĩa là reuse recorded resolution: Git ghi nhớ cách bạn giải một conflict và tự áp lại khi gặp lại đúng conflict đó. SSH key: tạo cặp khoá, dán public key vào GitLab, kiểm tra bằng ssh -T.</aside>
+</section>
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="Vòng làm việc một task" data-steps="7" data-scene="workflow">
+  <h2 class="t r">Vòng làm việc của <span class="k">một task</span></h2>
+  <div class="r" id="wf" style="position:relative;height:300px"></div>
+  <div class="term r" style="padding:28px 34px;font-size:30px">
+    <div class="bar"><i></i><i></i><i></i></div>
+    <div style="position:relative;height:110px">
+      <div class="cap" data-at="0"><div class="ln o"># bấm để đi từng bước</div></div>
+      <div class="cap" data-at="1"><div class="ln"><span class="ps">$</span><span class="typed">git switch main &amp;&amp; git pull</span></div><div class="ln o">  bắt đầu từ main mới nhất, tránh conflict về sau</div></div>
+      <div class="cap" data-at="2"><div class="ln"><span class="ps">$</span><span class="typed">git switch -c feat/GAV-123-login</span></div><div class="ln o">  một ticket, một nhánh</div></div>
+      <div class="cap" data-at="3"><div class="ln"><span class="ps">$</span><span class="typed">git status &amp;&amp; git diff</span></div><div class="ln o">  code xong thì nhìn lại mình đã sửa gì</div></div>
+      <div class="cap" data-at="4"><div class="ln"><span class="ps">$</span><span class="typed">git add -p</span></div><div class="ln o">  duyệt từng đoạn: bắt console.log, code thừa</div></div>
+      <div class="cap" data-at="5"><div class="ln"><span class="ps">$</span><span class="typed">git commit</span></div><div class="ln o">  editor mở ra: viết message theo quy ước</div></div>
+      <div class="cap" data-at="6"><div class="ln"><span class="ps">$</span><span class="typed">git push -u origin HEAD</span></div><div class="ln o">  -u: lần sau chỉ cần git push</div></div>
+      <div class="cap" data-at="7"><div class="ln ok">✓ MR được review, CI xanh, merge</div><div class="ln o">  xoá nhánh, quay về bước 1</div></div>
+    </div>
+  </div>
+  <aside class="notes">Bấm từng bước, con trỏ chạy trên đường và terminal gõ lệnh tương ứng. Bước 1 luôn bắt đầu từ main mới nhất. Bước 4 dùng git add -p để duyệt từng đoạn: đây là lúc tự review. Bước 6, -u gắn nhánh local với remote. Sau khi MR merge, xoá nhánh và quay lại bước 1.</aside>
+</section>
+
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="git add -p" data-steps="3">
+  <h2 class="t r"><span class="k">git add -p</span> trông như thế nào</h2>
+  <div class="row grow" style="gap:40px">
+    <div class="term r grow" style="font-size:25px">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln"><span class="ps">$</span>git add -p</div>
+      <div class="ln b">@@ -12,6 +12,8 @@ export function total(items) {</div>
+      <div class="ln">   const sum = items.reduce((a, i) =&gt; a + i.price, 0)</div>
+      <div class="ln ok tk" data-add="1:bad2">+  console.log("debug", sum)</div>
+      <div class="ln ok">+  return Math.round(sum * 100) / 100</div>
+      <div class="ln bad">-  return sum</div>
+      <div class="ln" style="color:var(--amber)">(1/1) Stage this hunk [y,n,q,a,d,s,e,?]? <span data-in="2" style="display:inline-block;color:var(--fg)">s</span></div>
+      <div class="ln o" data-in="2">Split into 2 hunks.</div>
+      <div class="ln" data-in="3"><span class="o">… console.log  →</span> n   <span class="o">… return Math.round  →</span> y</div>
+    </div>
+    <div class="col" style="width:560px;flex:none;gap:16px">
+      <div class="card r" style="gap:10px;padding:26px 30px"><h3 style="font-size:30px">Hunk là gì</h3><p>Một đoạn thay đổi liền nhau trong file. Git hỏi lần lượt từng hunk.</p></div>
+      <table class="tb r" style="font-size:25px"><tr><th>Phím</th><th>Nghĩa</th></tr>
+        <tr><td>y</td><td>Đưa đoạn này vào commit</td></tr><tr><td>n</td><td>Bỏ qua, vẫn giữ trong file</td></tr>
+        <tr><td>s</td><td>Tách thành đoạn nhỏ hơn</td></tr><tr><td>e</td><td>Sửa tay từng dòng</td></tr><tr><td>q</td><td>Thoát</td></tr></table>
+    </div>
+  </div>
+  <p class="lead r" style="font-size:28px"><span data-in="1" style="display:inline-block;color:var(--red)">Bắt được console.log debug.</span> <span data-in="3" style="display:inline-block">Kết quả: commit chỉ có dòng làm tròn, console.log vẫn ở file để bạn xoá.</span></p>
+  <aside class="notes">add -p duyệt từng hunk, tức một đoạn thay đổi liền nhau. Bấm 1: đoạn này lẫn một dòng console.log debug. Bấm 2: gõ s để tách thành hai hunk nhỏ. Bấm 3: n cho console.log, y cho dòng làm tròn. Kết quả commit sạch. Đây là bước tự review rẻ nhất trong ngày.</aside>
+</section>
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="Lệnh xem trạng thái" data-steps="7" data-scene="rows">
+  <h2 class="t r">Nhìn trước khi làm: lệnh <span class="k">chỉ đọc</span></h2>
+  <table class="tb r">
+    <tr><th>Lệnh</th><th>Trả lời câu hỏi</th></tr>
+    <tr data-in="1" data-fx="left"><td>git status</td><td>Đang ở nhánh nào? File nào đổi, file nào đã stage?</td></tr>
+    <tr data-in="2" data-fx="left"><td>git diff</td><td>Mình đã sửa gì mà chưa add?</td></tr>
+    <tr data-in="3" data-fx="left"><td>git diff --staged</td><td>Commit sắp tạo sẽ chứa đúng những gì?</td></tr>
+    <tr data-in="4" data-fx="left"><td>git log --oneline --graph</td><td>Các nhánh rẽ ra và nhập vào ra sao?</td></tr>
+    <tr data-in="5" data-fx="left"><td>git show &lt;sha&gt;</td><td>Commit này đổi gì, ai viết, vì sao?</td></tr>
+    <tr data-in="6" data-fx="left"><td>git blame -L 10,20 &lt;file&gt;</td><td>Dòng này do ai sửa, trong commit nào?</td></tr>
+    <tr data-in="7" data-fx="left"><td>git log -S "applyDiscount"</td><td>Đoạn code này được thêm hay xoá lúc nào?</td></tr>
+  </table>
+  <div class="rule r" style="align-self:flex-start">Thói quen: <code>status</code> → <code>diff --staged</code> → <code>commit</code></div>
+  <aside class="notes">Các lệnh này không thay đổi gì, chạy thoải mái. Thói quen vàng trước mỗi commit: git status, rồi git diff --staged để đọc chính xác commit sắp tạo. git log -S tìm commit đã thêm hoặc xoá một chuỗi: công cụ điều tra rất mạnh. Gợi ý alias: git config --global alias.lg "log --oneline --graph --decorate -20".</aside>
+</section>
+
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="Đọc git log --graph" data-steps="4">
+  <h2 class="t r">Đọc <span class="k">git log --oneline --graph</span></h2>
+  <div class="row grow" style="gap:40px">
+    <div class="term r" style="width:1020px;flex:none;font-size:27px">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln"><span class="ps">$</span>git log --oneline --graph -6</div>
+      <div class="ln"><span class="tk" data-add="1:hl">*</span> <span class="tk" data-add="2:hl" style="color:var(--amber)">3f2a9c1</span> <span class="tk" data-add="3:hl" style="color:var(--blue)">(HEAD -&gt; main, origin/main)</span> Merge 'feat/login'</div>
+      <div class="ln"><span class="tk" data-add="4:hl">|\</span></div>
+      <div class="ln">| * <span style="color:var(--amber)">9f8e7d6</span> <span style="color:var(--git)">(feat/login)</span> feat(login): remember me</div>
+      <div class="ln">| * <span style="color:var(--amber)">1a2b3c4</span> test(login): cover expiry</div>
+      <div class="ln">* | <span style="color:var(--amber)">7c8d9e0</span> fix(cart): round total</div>
+      <div class="ln"><span class="tk" data-add="4:hl">|/</span></div>
+      <div class="ln">* <span style="color:var(--amber)">a1b2c3d</span> chore: bump deps</div>
+    </div>
+    <div class="grow" style="position:relative">
+<div class="cap" data-at="0"><p class="eyebrow">Mới nhất ở trên</p><h3 style="font-size:40px;margin:12px 0">Đọc từ trên xuống</h3><p class="lead" style="font-size:30px">Mỗi dòng một commit, càng xuống càng cũ.</p></div>
+<div class="cap" data-at="1"><p class="eyebrow">*</p><h3 style="font-size:40px;margin:12px 0">Một commit</h3><p class="lead" style="font-size:30px">Cột chứa dấu * cho biết commit nằm trên nhánh nào.</p></div>
+<div class="cap" data-at="2"><p class="eyebrow">Hash ngắn</p><h3 style="font-size:40px;margin:12px 0">7 ký tự đầu của hash</h3><p class="lead" style="font-size:30px">Đủ để gọi tên commit: git show 3f2a9c1.</p></div>
+<div class="cap" data-at="3"><p class="eyebrow">Ngoặc đơn</p><h3 style="font-size:40px;margin:12px 0">Các con trỏ đang ở đây</h3><p class="lead" style="font-size:30px">HEAD → main: bạn đang ở main. origin/main cùng chỗ: đã đồng bộ với server.</p></div>
+<div class="cap" data-at="4"><p class="eyebrow">|\ và |/</p><h3 style="font-size:40px;margin:12px 0">Nhánh tách ra, nhập lại</h3><p class="lead" style="font-size:30px">Hai commit login đi song song với commit fix, rồi gộp ở merge commit trên cùng.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Lệnh này là bản đồ của repo. Bấm lần lượt: dấu sao là một commit; chuỗi vàng là hash ngắn; phần trong ngoặc là các con trỏ (HEAD, nhánh local, nhánh remote) đang trỏ vào commit đó; dấu gạch chéo là chỗ nhánh tách ra và nhập lại. Gợi ý alias: git config --global alias.lg "log --oneline --graph --decorate -20".</aside>
+</section>
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="Làm việc với nhánh">
+  <h2 class="t r">Làm việc với <span class="k">nhánh</span></h2>
+  <div class="row grow" style="gap:40px">
+    <div class="term auto r grow" style="font-size:25px">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git switch -c feat/GAV-123-login</span><span class="c">   # tạo + chuyển</span></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git switch main</span><span class="c">                    # chuyển nhánh</span></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git switch -</span><span class="c">                       # về nhánh trước</span></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git branch -vv</span><span class="c">                     # nhánh + tracking</span></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git push -u origin HEAD</span><span class="c">            # đẩy lần đầu</span></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git branch -d feat/GAV-123-login</span><span class="c">   # xoá (đã merge)</span></div>
+      <div class="ln"><span class="ps">$</span><span class="typed">git fetch --prune</span><span class="c">                  # dọn nhánh remote đã xoá</span></div>
+    </div>
+    <div class="col" style="width:480px;flex:none">
+      <div class="card r"><div class="hrow"><span class="badge g"><svg><use href="#i-check"/></svg></span><h3>switch / restore</h3></div><p>Thay cho <code>checkout</code>: một lệnh, một việc, ít gõ nhầm hơn.</p></div>
+      <div class="card r"><div class="hrow"><span class="badge r"><svg><use href="#i-alert"/></svg></span><h3>-d an toàn, -D ép</h3></div><p><code>-d</code> từ chối xoá nhánh chưa merge. Chỉ dùng <code>-D</code> khi chắc chắn.</p></div>
+    </div>
+  </div>
+  <aside class="notes">git switch và git restore tách từ git checkout cũ (vốn làm quá nhiều việc). Khuyến khích team dùng switch/restore cho rõ nghĩa. Xoá nhánh bằng -d an toàn: Git từ chối nếu nhánh chưa merge. Nhánh remote đã merge nên xoá luôn; GitLab có tuỳ chọn tự xoá khi merge.</aside>
+</section>
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="Merge hay rebase" data-steps="4" data-scene="mergeRebase">
+  <h2 class="t r"><span class="k">Merge</span> hay <span class="k">rebase</span>?</h2>
+  <div class="term r" style="padding:18px 28px"><div class="ln" style="position:relative;height:1.6em">
+    <span class="cap" data-at="0"><span class="o"># main có thêm C, D trong lúc bạn làm E, F</span></span>
+    <span class="cap" data-at="1"><span class="ps">$</span><span class="typed">git switch main &amp;&amp; git merge feat/login</span></span>
+    <span class="cap" data-at="2"><span class="o"># quay lại, lần này thử rebase</span></span>
+    <span class="cap" data-at="3"><span class="ps">$</span><span class="typed">git switch feat/login &amp;&amp; git rebase main</span></span>
+    <span class="cap" data-at="4"><span class="ps">$</span><span class="typed">git switch main &amp;&amp; git merge --ff-only feat/login</span></span>
+  </div></div>
+  <svg class="graph r" id="gMR" width="1664" height="420"></svg>
+  <div style="position:relative;height:90px" class="r">
+    <div class="cap rule dark" data-at="0,2">Cùng một điểm xuất phát, hai cách đưa thay đổi của main vào.</div>
+    <div class="cap rule dark" data-at="1"><span style="color:var(--blue)">Merge:</span> thêm commit M, giữ nguyên lịch sử. An toàn cho nhánh dùng chung.</div>
+    <div class="cap rule dark" data-at="3"><span style="color:var(--git)">Rebase:</span> E, F được chép thành E′, F′ trên D. Hash mới.</div>
+    <div class="cap rule" data-at="4">Fast-forward: main chỉ trượt con trỏ lên, không cần commit gộp. Rebase nhánh của mình, merge vào nhánh chung.</div>
+  </div>
+  <aside class="notes">Cùng một đồ thị, hai cách. Bấm 1: merge tạo commit M nối hai nhánh, không viết lại gì. Bấm 2: quay lại. Bấm 3: rebase gỡ E, F ra và áp lại lên đầu D thành E′, F′: nội dung giống nhưng cha khác nên hash khác, bản cũ mờ đi. Bấm 4: main chỉ việc trượt lên, lịch sử thẳng. Quy tắc vàng ở dải cuối.</aside>
+</section>
+
+<!-- ============ 03 ============ -->
+
+<section class="slide" data-sec="02 · Lệnh hằng ngày" data-title="rebase -i: dọn commit" data-steps="3">
+  <h2 class="t r"><span class="k">rebase -i</span>: dọn commit trước khi push</h2>
+  <div class="row grow" style="gap:40px">
+    <div class="term r" style="width:960px;flex:none;font-size:26px">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln"><span class="ps">$</span>git rebase -i origin/main</div>
+      <div class="ln o"># editor mở ra, sửa chữ đầu dòng rồi lưu:</div>
+      <div style="position:relative;height:240px">
+        <div data-out="1" style="position:absolute;inset:0;transition:opacity .5s, transform .5s">
+          <div class="ln">pick 1111111 feat(cart): add coupon</div><div class="ln">pick 2222222 wip</div><div class="ln">pick 3333333 fix typo</div><div class="ln">pick 4444444 test(cart): coupon cases</div><div class="ln">pick 5555555 wip 2</div>
+        </div>
+        <div data-in="1" style="position:absolute;inset:0">
+          <div class="ln"><span class="ok">pick  </span> 1111111 feat(cart): add coupon</div><div class="ln"><span style="color:var(--amber)">fixup </span> 2222222 wip</div><div class="ln"><span style="color:var(--amber)">fixup </span> 3333333 fix typo</div><div class="ln"><span class="ok">reword</span> 4444444 test(cart): coupon cases</div><div class="ln"><span style="color:var(--amber)">fixup </span> 5555555 wip 2</div>
+        </div>
+      </div>
+      <div class="ln" data-in="2"><span class="ps">$</span>git log --oneline origin/main..</div>
+      <div class="ln" data-in="2"><span style="color:var(--amber)">8a1c2d3</span> test(cart): cover two-coupon case</div>
+      <div class="ln" data-in="2"><span style="color:var(--amber)">6b7e8f9</span> feat(cart): add coupon</div>
+    </div>
+    <div class="col grow" style="gap:16px">
+      <table class="tb r" style="font-size:25px"><tr><th>Lệnh</th><th>Làm gì</th></tr>
+        <tr><td>pick</td><td>Giữ nguyên commit</td></tr><tr><td>reword</td><td>Giữ, sửa message</td></tr>
+        <tr><td>squash</td><td>Gộp vào commit trên, ghép message</td></tr><tr><td>fixup</td><td>Gộp vào commit trên, bỏ message</td></tr><tr><td>drop</td><td>Bỏ hẳn commit</td></tr></table>
+      <div class="card" data-in="3" style="gap:10px;padding:24px 28px"><h3 style="font-size:28px">Mẹo: --fixup</h3><p style="font-size:24px"><code>git commit --fixup 1111111</code> rồi <code>git rebase -i --autosquash origin/main</code>: Git tự xếp sẵn.</p></div>
+    </div>
+  </div>
+  <aside class="notes">5 commit lộn xộn ở local (wip, fix typo) trở thành 2 commit sạch trước khi push. Bấm 1: đổi chữ đầu dòng, fixup gộp commit vào commit phía trên và bỏ message của nó; reword giữ commit nhưng cho sửa message. Bấm 2: kết quả còn hai commit. Chỉ làm trên nhánh của mình, vì đây là viết lại lịch sử. Bấm 3: mẹo --fixup và --autosquash.</aside>
+</section>
+
+<section class="slide divider" data-sec="03 · Quy ước team" data-tr="zoom" data-title="03 Quy ước team">
+  <div class="num" data-n="03">03</div>
+  <h2>Quy ước team</h2>
+  <p>Lịch sử Git là tài liệu: viết sao cho người sau đọc được.</p>
+  <svg class="deco" viewBox="0 0 520 1080"><path d="M160 140 V940" stroke="#2b3440"/><path d="M160 260 C160 340 360 310 360 390 V500 C360 580 160 560 160 640" stroke="#45c46f"/><path d="M160 640 C160 720 360 690 360 770 V800 C360 860 160 850 160 900" stroke="#ab90ff"/><circle cx="160" cy="260" r="22" fill="#e9edf1" style="--d:0"/><circle cx="360" cy="420" r="22" fill="#45c46f" style="--d:300"/><circle cx="160" cy="640" r="22" fill="#e9edf1" style="--d:600"/><circle cx="360" cy="780" r="22" fill="#ab90ff" style="--d:900"/><circle cx="160" cy="900" r="22" fill="#e9edf1" style="--d:1100"/></svg>
+  <aside class="notes">Quy ước giúp review nhanh hơn, revert chính xác hơn, bisect được, và sinh changelog tự động. Người đọc lịch sử nhiều nhất chính là bạn của sáu tháng sau.</aside>
+</section>
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Khi nào commit" data-steps="4">
+  <h2 class="t r">Khi nào nên <span class="k">commit</span>?</h2>
+  <div class="row grow" style="gap:40px">
+    <div class="col grow">
+      <p class="eyebrow r" style="color:var(--green)">Nên</p>
+      <div class="card hrow" data-in="1" data-fx="left" style="flex-direction:row;padding:24px 28px"><span class="badge g"><svg><use href="#i-check"/></svg></span><p style="color:var(--fg)">Một thay đổi logic, mô tả được bằng một câu</p></div>
+      <div class="card hrow" data-in="2" data-fx="left" style="flex-direction:row;padding:24px 28px"><span class="badge g"><svg><use href="#i-check"/></svg></span><p style="color:var(--fg)">Mọi commit đều build và test pass</p></div>
+      <div class="card hrow" data-in="3" data-fx="left" style="flex-direction:row;padding:24px 28px"><span class="badge g"><svg><use href="#i-check"/></svg></span><p style="color:var(--fg)">Commit thường ở local, dọn lại trước khi push</p></div>
+      <div class="card hrow" data-in="4" data-fx="left" style="flex-direction:row;padding:24px 28px"><span class="badge g"><svg><use href="#i-check"/></svg></span><p style="color:var(--fg)">Tách refactor, đổi tên, format khỏi đổi hành vi</p></div>
+    </div>
+    <div class="col grow">
+      <p class="eyebrow r" style="color:var(--red)">Tránh</p>
+      <div class="card hrow" data-in="1" data-fx="right" style="flex-direction:row;padding:24px 28px"><span class="badge r"><svg><use href="#i-x"/></svg></span><p style="color:var(--fg)">"WIP", "fix", "update" dồn 30 file</p></div>
+      <div class="card hrow" data-in="2" data-fx="right" style="flex-direction:row;padding:24px 28px"><span class="badge r"><svg><use href="#i-x"/></svg></span><p style="color:var(--fg)">Đẩy code đang hỏng lên nhánh chung</p></div>
+      <div class="card hrow" data-in="3" data-fx="right" style="flex-direction:row;padding:24px 28px"><span class="badge r"><svg><use href="#i-x"/></svg></span><p style="color:var(--fg)">Commit build output, <code>.env</code>, file sinh tự động</p></div>
+      <div class="card hrow" data-in="4" data-fx="right" style="flex-direction:row;padding:24px 28px"><span class="badge r"><svg><use href="#i-x"/></svg></span><p style="color:var(--fg)">Trộn nhiều task trong một commit</p></div>
+    </div>
+  </div>
+  <aside class="notes">Mỗi lần bấm hiện một cặp nên/tránh. Một commit là một thay đổi logic hoàn chỉnh, mô tả được bằng một câu và revert độc lập. Ở local, commit thường như điểm lưu game; trước khi push thì dọn lại bằng rebase -i. Mọi commit trên nhánh chung nên build được, để git bisect hoạt động.</aside>
+</section>
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Commit message" data-steps="5" data-scene="rows">
+  <h2 class="t r">Commit message theo <span class="k">Conventional Commits</span></h2>
+  <div class="row grow" style="gap:40px">
+    <div class="col grow" style="gap:28px">
+      <div class="term r" style="font-size:28px;padding:30px 36px">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div class="ln"><span data-in="1" data-fx="pop" style="display:inline-block;color:var(--green)">feat</span><span data-in="2" data-fx="pop" style="display:inline-block;color:var(--blue)">(auth)</span><span data-in="3" style="display:inline-block">: refresh token before it expires</span></div>
+        <div class="ln"> </div>
+        <div class="ln o" data-in="4">Token hết hạn khi app ở background lâu hơn 1h,</div>
+        <div class="ln o" data-in="4">user bị đá ra. Làm mới sớm 5 phút khi resume.</div>
+        <div class="ln"> </div>
+        <div class="ln" data-in="4" style="color:var(--amber)">Refs: GAV-123</div>
+      </div>
+      <div class="row r" style="gap:16px;font-size:24px;flex-wrap:wrap">
+        <span class="pill" style="color:var(--green)">feat</span><span class="pill" style="color:var(--red)">fix</span><span class="pill" style="color:var(--blue)">refactor</span><span class="pill" style="color:var(--violet)">perf</span><span class="pill">test</span><span class="pill">docs</span><span class="pill">chore</span><span class="pill">ci</span>
+      </div>
+      <p class="lead r" style="font-size:30px">Tiêu đề nói <b style="color:var(--fg)">cái gì</b>, body nói <b style="color:var(--fg)">vì sao</b>. Diff đã nói như thế nào.</p>
+    </div>
+    <div class="card r" style="width:560px;flex:none;gap:18px;font-family:var(--mono);font-size:25px">
+      <p class="eyebrow" style="color:var(--red)">Đừng</p>
+      <s class="mute">fix bug</s><s class="mute">update code</s><s class="mute">WIP</s>
+      <p class="eyebrow" style="color:var(--green);margin-top:14px">Nên</p>
+      <span data-in="5">fix(cart): round total to 2 decimals</span>
+      <span data-in="5">refactor(api): extract retry helper</span>
+      <span data-in="5">docs(readme): add local setup</span>
+    </div>
+  </div>
+  <aside class="notes">Message được lắp từng phần: type, scope, tiêu đề, rồi body và footer. Tiêu đề mệnh lệnh, dưới 72 ký tự, không chấm cuối. Body giải thích vì sao: bối cảnh, đánh đổi. Footer gắn mã ticket, và BREAKING CHANGE nếu có. Chuẩn này cho phép tự sinh changelog và tự tăng version.</aside>
+</section>
+
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Mỗi type dùng khi nào">
+  <h2 class="t r">Mỗi <span class="k">type</span> dùng khi nào</h2>
+  <table class="tb r" style="font-size:25px">
+    <tr><th>Type</th><th>Dùng khi</th><th>Ví dụ</th><th>Version</th></tr>
+    <tr><td style="color:var(--green)">feat</td><td>Thêm tính năng người dùng thấy</td><td class="mono">feat(cart): allow two coupons</td><td class="mono">1.4.0 → 1.5.0</td></tr>
+    <tr><td style="color:var(--red)">fix</td><td>Sửa lỗi</td><td class="mono">fix(auth): refresh token on resume</td><td class="mono">1.4.0 → 1.4.1</td></tr>
+    <tr><td style="color:var(--blue)">refactor</td><td>Đổi cấu trúc, không đổi hành vi</td><td class="mono">refactor(api): extract retry</td><td class="mono mute">không đổi</td></tr>
+    <tr><td style="color:var(--violet)">perf</td><td>Nhanh hơn, nhẹ hơn</td><td class="mono">perf(feed): cache thumbnails</td><td class="mono mute">không đổi</td></tr>
+    <tr><td>test</td><td>Thêm hoặc sửa test</td><td class="mono">test(cart): cover rounding</td><td class="mono mute">không đổi</td></tr>
+    <tr><td>docs</td><td>Tài liệu, README</td><td class="mono">docs: add local setup</td><td class="mono mute">không đổi</td></tr>
+    <tr><td>chore / ci</td><td>Việc vặt, dependency, pipeline</td><td class="mono">ci: cache bun install</td><td class="mono mute">không đổi</td></tr>
+    <tr class="hl"><td style="color:var(--git)">feat!</td><td>Phá vỡ tương thích (BREAKING CHANGE)</td><td class="mono">feat(api)!: drop v1 endpoints</td><td class="mono">1.4.0 → 2.0.0</td></tr>
+  </table>
+  <p class="lead r" style="font-size:28px"><b style="color:var(--fg)">scope</b> trong ngoặc là phần bị ảnh hưởng: cart, auth, api. Không chắc thì bỏ trống: <code>docs: …</code></p>
+  <aside class="notes">Mỗi type có ý nghĩa cụ thể, và vì thế máy đọc được: công cụ release tự tính version tiếp theo. feat tăng số giữa, fix tăng số cuối, dấu chấm than hoặc dòng BREAKING CHANGE trong footer tăng số đầu. Cột cuối nối sang slide semver ở phần sau.</aside>
+</section>
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Đặt tên nhánh" data-steps="3">
+  <h2 class="t r">Đặt tên <span class="k">nhánh</span></h2>
+  <div class="r" style="display:flex;justify-content:center;gap:6px;font-family:var(--mono);font-size:84px;font-weight:700;padding:30px 0 10px">
+    <div class="col" data-in="1" data-fx="pop" style="align-items:center;gap:14px"><span style="color:var(--git)">feat</span><span style="font-size:24px;color:var(--mute);font-weight:400">loại việc</span></div>
+    <span class="mute" data-in="1">/</span>
+    <div class="col" data-in="2" data-fx="pop" style="align-items:center;gap:14px"><span style="color:var(--amber)">GAV-123</span><span style="font-size:24px;color:var(--mute);font-weight:400">mã ticket</span></div>
+    <span class="mute" data-in="2">-</span>
+    <div class="col" data-in="3" data-fx="pop" style="align-items:center;gap:14px"><span>social-login</span><span style="font-size:24px;color:var(--mute);font-weight:400">mô tả ngắn</span></div>
+  </div>
+  <div class="row grow" style="gap:40px">
+    <div class="term r grow" style="font-size:27px">
+      <div class="ln">fix/GAV-207-null-cart-total</div><div class="ln">hotfix/GAV-311-payment-timeout</div><div class="ln">refactor/GAV-150-split-order-svc</div><div class="ln">chore/upgrade-node-24</div>
+    </div>
+    <ul class="r grow" style="font-size:29px;line-height:1.5;margin:0;padding-left:34px;display:flex;flex-direction:column;gap:12px">
+      <li>Chữ thường, gạch ngang, không dấu</li><li>Có mã ticket để tracker tự liên kết MR</li><li>Một ticket, một nhánh</li><li>Sống ngắn: merge trong 1–3 ngày</li>
+    </ul>
+  </div>
+  <aside class="notes">Tên nhánh lắp từ ba phần: loại việc, mã ticket, mô tả ngắn. Chữ thường, gạch ngang, không dấu, không khoảng trắng để tránh lỗi trên các shell khác nhau. Có mã ticket thì tracker tự liên kết MR. Nhánh càng sống lâu càng nhiều conflict.</aside>
+</section>
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Quy trình nhánh" data-steps="3" data-scene="trunk">
+  <h2 class="t r">Quy trình: <span class="k">main</span> luôn deploy được</h2>
+  <svg class="graph r" id="gTrunk" width="1664" height="440"></svg>
+  <div class="row r" style="gap:32px">
+    <div class="card grow"><div class="hrow"><span class="badge g"><svg><use href="#i-check"/></svg></span><h3>Trunk-based / GitHub flow</h3></div><p>Khuyên dùng. main được bảo vệ, nhánh ngắn, MR + CI xanh + review, tag khi release.</p></div>
+    <div class="card grow"><div class="hrow"><span class="badge n"><svg><use href="#i-merge"/></svg></span><h3>Git Flow</h3></div><p>develop, release, hotfix. Chỉ đáng khi phát hành theo phiên bản, duy trì nhiều bản song song.</p></div>
+  </div>
+  <aside class="notes">Bấm để xem nhánh ngắn mọc ra rồi nhập về main qua MR, rồi tag phát hành rơi xuống. main được bảo vệ: không push thẳng, cần MR, CI xanh và ít nhất một approve. Git Flow chỉ đáng khi sản phẩm phát hành theo phiên bản đóng gói; với deploy liên tục nó thêm thủ tục mà không thêm an toàn.</aside>
+</section>
+
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Tag và semver" data-steps="3" data-scene="semver">
+  <h2 class="t r"><span class="k">Tag</span> và semver: đánh số phát hành</h2>
+  <div class="r" style="display:flex;justify-content:center;align-items:flex-end;gap:10px;font-family:var(--display);font-weight:800;font-size:200px;line-height:1;padding-top:10px" id="ver">
+    <span style="color:var(--mute)">v</span>
+    <div class="col" style="align-items:center;gap:6px"><span class="vd" style="display:inline-block;color:var(--git)">1</span><span class="mono" style="font-size:24px;font-weight:600;color:var(--mute)">MAJOR</span></div><span>.</span>
+    <div class="col" style="align-items:center;gap:6px"><span class="vd" style="display:inline-block;color:var(--green)">4</span><span class="mono" style="font-size:24px;font-weight:600;color:var(--mute)">MINOR</span></div><span>.</span>
+    <div class="col" style="align-items:center;gap:6px"><span class="vd" style="display:inline-block;color:var(--blue)">0</span><span class="mono" style="font-size:24px;font-weight:600;color:var(--mute)">PATCH</span></div>
+  </div>
+  <div class="row grow" style="gap:40px">
+    <div class="grow" style="position:relative">
+<div class="cap" data-at="0"><p class="eyebrow">Semantic versioning</p><h3 style="font-size:40px;margin:12px 0">Ba con số, ba ý nghĩa</h3><p class="lead" style="font-size:30px">Nhìn số là biết bản mới có an toàn để nâng cấp không.</p></div>
+<div class="cap" data-at="1"><p class="eyebrow">fix → PATCH</p><h3 style="font-size:40px;margin:12px 0">1.4.0 → 1.4.1</h3><p class="lead" style="font-size:30px">Chỉ sửa lỗi. Nâng cấp yên tâm.</p></div>
+<div class="cap" data-at="2"><p class="eyebrow">feat → MINOR</p><h3 style="font-size:40px;margin:12px 0">1.4.1 → 1.5.0</h3><p class="lead" style="font-size:30px">Thêm tính năng, không phá gì. PATCH về 0.</p></div>
+<div class="cap" data-at="3"><p class="eyebrow">feat! → MAJOR</p><h3 style="font-size:40px;margin:12px 0">1.5.0 → 2.0.0</h3><p class="lead" style="font-size:30px">Phá vỡ tương thích. Người dùng phải đọc hướng dẫn nâng cấp.</p></div>
+    </div>
+    <div class="term r" style="width:820px;flex:none;font-size:25px">
+      <div class="ln"><span class="ps">$</span>git tag -a v1.5.0 -m "Release 1.5.0"</div>
+      <div class="ln"><span class="ps">$</span>git push origin v1.5.0</div>
+      <div class="ln"><span class="ps">$</span>git tag --list "v1.*"</div>
+      <div class="ln c"># tag = con trỏ đứng yên, branch = con trỏ di chuyển</div>
+    </div>
+  </div>
+  <aside class="notes">Tag là con trỏ giống branch nhưng không bao giờ di chuyển: đánh dấu đúng commit đã phát hành. Semver: MAJOR.MINOR.PATCH. Bấm từng bước để thấy fix, feat và breaking change đẩy số nào lên. Đây là lý do commit message cần đúng type: công cụ release đọc type để tính version.</aside>
+</section>
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Merge request tốt">
+  <h2 class="t r">Merge request tốt được <span class="k">review nhanh</span></h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:28px">
+    <div class="card r"><div class="hrow"><span class="badge">1</span><h3>Nhỏ, một mục đích</h3></div><p>Dưới ~400 dòng thay đổi. Lớn hơn thì tách MR.</p></div>
+    <div class="card r"><div class="hrow"><span class="badge">2</span><h3>Mô tả đủ</h3></div><p>Cái gì, vì sao, cách test, ảnh trước/sau nếu đổi UI.</p></div>
+    <div class="card r"><div class="hrow"><span class="badge">3</span><h3>CI xanh trước</h3></div><p>Đừng xin review khi pipeline còn đỏ.</p></div>
+    <div class="card r"><div class="hrow"><span class="badge">4</span><h3>Tự review trước</h3></div><p>Đọc diff của chính mình trước khi gán người.</p></div>
+    <div class="card r"><div class="hrow"><span class="badge">5</span><h3>Sửa bằng commit mới</h3></div><p>Reviewer thấy đúng phần đã sửa; squash khi merge.</p></div>
+    <div class="card r"><div class="hrow"><span class="badge">6</span><h3>Cập nhật theo main</h3></div><p>Rebase lên main mới nhất, chạy lại test.</p></div>
+  </div>
+  <aside class="notes">MR nhỏ được review kỹ, MR 2000 dòng chỉ được "LGTM". Tự review diff trên GitLab trước khi gán reviewer: bạn sẽ tự bắt được nửa số lỗi. Phản hồi review bằng commit mới để reviewer xem phần đã sửa.</aside>
+</section>
+
+<!-- ============ 04 ============ -->
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="Mẫu mô tả MR">
+  <h2 class="t r">Mẫu mô tả <span class="k">merge request</span></h2>
+  <div class="row grow" style="gap:40px">
+    <div class="term r" style="width:920px;flex:none;font-size:25px;line-height:1.5">
+      <div class="ln" style="color:var(--git)">## Cái gì</div><div class="ln">Cho phép áp 2 mã giảm giá trên một đơn.</div>
+      <div class="ln" style="color:var(--git)">## Vì sao</div><div class="ln">Marketing chạy combo 11/11. Refs: GAV-123</div>
+      <div class="ln" style="color:var(--git)">## Cách test</div><div class="ln">1. Thêm SALE10 và FREESHIP vào giỏ</div><div class="ln">2. Tổng giảm đúng, không bao giờ âm</div>
+      <div class="ln" style="color:var(--git)">## Ảnh</div><div class="ln">Trước | Sau  (màn giỏ hàng)</div>
+      <div class="ln" style="color:var(--git)">## Checklist</div><div class="ln">- [x] Test pass   - [x] Không đổi API</div>
+    </div>
+    <div class="col grow" style="gap:20px">
+      <p class="eyebrow r">Ngôn ngữ trong review</p>
+      <div class="card r" style="padding:22px 28px;gap:6px"><h3 class="mono" style="font-size:30px">LGTM</h3><p>"Looks good to me": đồng ý, có thể merge.</p></div>
+      <div class="card r" style="padding:22px 28px;gap:6px"><h3 class="mono" style="font-size:30px">nit:</h3><p>Góp ý nhỏ, không bắt buộc sửa.</p></div>
+      <div class="card r" style="padding:22px 28px;gap:6px"><h3 class="mono" style="font-size:30px">Request changes</h3><p>Phải sửa rồi mới merge. Trả lời từng thread, resolve khi xong.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Một mô tả MR tốt trả lời bốn câu: cái gì, vì sao, test thế nào, trông ra sao. Đặt mẫu này vào .gitlab/merge_request_templates để GitLab tự điền. Bên phải là vài từ hay gặp trong review: LGTM là đồng ý, nit là góp ý nhỏ không bắt buộc.</aside>
+</section>
+
+<section class="slide" data-sec="03 · Quy ước team" data-title="3 cách merge một MR" data-steps="3" data-scene="mergeStrat">
+  <h2 class="t r">Ba cách merge một MR</h2>
+  <svg class="graph r" id="gMS" width="1664" height="420"></svg>
+  <div style="position:relative;height:120px" class="r">
+    <div class="cap rule dark" data-at="0">Nhánh có 3 commit F1, F2, F3. Main đã có thêm C.</div>
+    <div class="cap rule dark" data-at="1"><span style="color:var(--blue)">Merge commit:</span> giữ đủ 3 commit và thêm M. Lịch sử đầy đủ nhưng rối.</div>
+    <div class="cap rule dark" data-at="2"><span style="color:var(--violet)">Squash:</span> 3 commit gộp thành 1 commit S trên main. Gọn, revert cả tính năng bằng một lệnh.</div>
+    <div class="cap rule dark" data-at="3"><span style="color:var(--git)">Rebase + fast-forward:</span> chép từng commit lên main, lịch sử thẳng. Hợp khi mỗi commit đã sạch.</div>
+  </div>
+  <aside class="notes">GitLab cho chọn cách merge trong cài đặt project. Merge commit giữ mọi thứ. Squash gộp cả MR thành một commit: phù hợp đa số team vì một MR là một tính năng, revert một lệnh là xong. Rebase rồi fast-forward giữ từng commit nhưng thẳng hàng: chỉ đáng khi mọi người viết commit sạch. Fast-forward nghĩa là main chỉ việc trượt con trỏ lên, không cần tạo commit gộp.</aside>
+</section>
+
+<section class="slide divider" data-sec="04 · Tình huống thực tế" data-tr="zoom" data-title="04 Tình huống thực tế">
+  <div class="num" data-n="04">04</div>
+  <h2>Tình huống thực tế</h2>
+  <p>"Tôi đang gặp chuyện X. Tôi gõ gì?"</p>
+  <svg class="deco" viewBox="0 0 520 1080"><path d="M160 140 V940" stroke="#2b3440"/><path d="M160 300 C160 380 360 350 360 430 V560" stroke="#ff6161"/><path d="M160 600 C160 680 360 650 360 730 V820" stroke="#f3bb4f"/><circle cx="160" cy="300" r="22" fill="#e9edf1" style="--d:0"/><circle cx="360" cy="450" r="22" fill="#ff6161" style="--d:300"/><circle cx="360" cy="560" r="22" fill="#ff6161" style="--d:450"/><circle cx="160" cy="600" r="22" fill="#e9edf1" style="--d:600"/><circle cx="360" cy="780" r="22" fill="#f3bb4f" style="--d:900"/></svg>
+  <aside class="notes">Mỗi slide là một tình huống có thật, kèm lệnh xử lý và điều cần cẩn thận. Câu hỏi đầu tiên ở mọi tình huống: thay đổi này đã push lên nhánh người khác dùng chưa?</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Lỡ tay ở commit cuối" data-steps="1" data-scene="amend">
+  <h2 class="t r">Lỡ tay ở <span class="k">commit cuối</span></h2>
+  <div class="row grow" style="gap:48px">
+    <div class="col grow" style="gap:24px">
+      <svg class="graph r" id="gAmend" width="900" height="330"></svg>
+      <div class="term r" style="font-size:26px"><div class="ln" style="position:relative;height:3.2em">
+        <div class="cap" data-at="0"><div class="ln o"># quên add src/forgot.ts vào commit C</div><div class="ln"><span class="ps">$</span>git add src/forgot.ts</div></div>
+        <div class="cap" data-at="1"><div class="ln"><span class="ps">$</span><span class="typed">git commit --amend --no-edit</span></div><div class="ln ok">  C được thay bằng C′ (hash mới)</div></div>
+      </div></div>
+    </div>
+    <div class="col" style="width:600px;flex:none">
+      <div class="card r"><div class="hrow"><span class="badge g"><svg><use href="#i-check"/></svg></span><h3>Chưa push</h3></div><p>Amend thoải mái: thêm file quên, sửa message bằng <code>--amend -m "…"</code>.</p></div>
+      <div class="card r"><div class="hrow"><span class="badge b"><svg><use href="#i-up"/></svg></span><h3>Đã push, nhánh riêng</h3></div><p><code>git push --force-with-lease</code>. Không dùng <code>--force</code> trần.</p></div>
+      <div class="card r"><div class="hrow"><span class="badge r"><svg><use href="#i-alert"/></svg></span><h3>Đã push, nhánh chung</h3></div><p>Đừng amend. Tạo commit mới sửa lỗi.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Bấm một lần: amend thay C bằng C′ với hash mới; C cũ mờ đi vì không còn tên nào trỏ vào. Nếu chưa push thì thoải mái. Đã push lên nhánh riêng thì cần push --force-with-lease. Đã push lên nhánh chung thì đừng amend: tạo commit mới sửa lỗi.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Chuyển nhánh gấp">
+  <h2 class="t r">Đang dở việc, phải <span class="k">chuyển nhánh gấp</span></h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:28px;flex:1">
+    <div class="card r"><div class="hrow"><span class="badge">A</span><h3>git stash</h3></div><p>Gián đoạn vài phút. <code>pop</code> = lấy ra và xoá khỏi danh sách, <code>apply</code> = lấy ra nhưng giữ lại.</p>
+      <div class="term auto" style="font-size:22px;padding:20px 22px"><div class="ln"><span class="ps">$</span><span class="typed">git stash push -u -m "wip"</span></div><div class="ln"><span class="ps">$</span><span class="typed">git switch hotfix/GAV-9</span></div><div class="ln c"># ...sửa, commit...</div><div class="ln"><span class="ps">$</span><span class="typed">git switch -</span></div><div class="ln"><span class="ps">$</span><span class="typed">git stash pop</span></div></div></div>
+    <div class="card r"><div class="hrow"><span class="badge b">B</span><h3>git worktree</h3></div><p>Gián đoạn dài: thư mục thứ hai, nhánh khác, dùng chung lịch sử.</p>
+      <div class="term auto" style="font-size:22px;padding:20px 22px"><div class="ln"><span class="ps">$</span><span class="typed">git worktree add \</span></div><div class="ln"><span class="typed">    ../app-hotfix main</span></div><div class="ln"><span class="ps">$</span><span class="typed">cd ../app-hotfix</span></div><div class="ln c"># thư mục thứ hai, chung .git</div><div class="ln"><span class="ps">$</span><span class="typed">git worktree remove ../app-hotfix</span></div></div></div>
+    <div class="card r"><div class="hrow"><span class="badge v">C</span><h3>Commit WIP</h3></div><p>Trên nhánh của riêng mình</p>
+      <div class="term auto" style="font-size:22px;padding:20px 22px"><div class="ln"><span class="ps">$</span><span class="typed">git commit -am "wip"</span></div><div class="ln"><span class="ps">$</span><span class="typed">git switch hotfix/GAV-9</span></div><div class="ln c"># ...quay lại sau...</div><div class="ln"><span class="ps">$</span><span class="typed">git switch -</span></div><div class="ln"><span class="ps">$</span><span class="typed">git reset --soft HEAD~1</span></div></div></div>
+  </div>
+  <aside class="notes">Chọn theo độ dài gián đoạn. Stash cho vài phút; nhớ -u để cất cả file mới. Worktree cho gián đoạn dài hoặc cần chạy song song hai nhánh: thư mục thứ hai dùng chung .git, không phải clone lại. Commit WIP rồi reset --soft sau cũng hoàn toàn hợp lệ trên nhánh riêng.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Bỏ thay đổi chưa commit" data-steps="1">
+  <h2 class="t r">Bỏ thay đổi <span class="k">chưa commit</span></h2>
+  <table class="tb r">
+    <tr><th>Lệnh</th><th>Tôi muốn…</th></tr>
+    <tr><td>git restore &lt;file&gt;</td><td>Bỏ sửa một file (chưa add)</td></tr>
+    <tr><td>git restore --staged &lt;file&gt;</td><td>Bỏ khỏi staging, giữ nội dung đã sửa</td></tr>
+    <tr><td>git restore .</td><td>Bỏ mọi thay đổi trên file đã track</td></tr>
+    <tr><td>git restore --source main &lt;file&gt;</td><td>Lấy file về như ở main</td></tr>
+    <tr><td>git clean -nd</td><td>Xem trước file rác chưa track sẽ bị xoá</td></tr>
+    <tr><td>git clean -fd</td><td>Xoá thật file chưa track</td></tr>
+  </table>
+  <div class="rule" data-in="1" data-fx="shake" style="background:var(--red);color:#fff">Thay đổi chưa commit không có undo. Nhìn <code>git status</code> trước khi bỏ.</div>
+  <aside class="notes">restore là lệnh chuyên để bỏ thay đổi. Bấm để hiện cảnh báo: thay đổi chưa từng commit thì không vào reflog, xoá là mất thật. Vì vậy luôn status và diff trước. git clean luôn chạy -n (dry run) trước.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Reset hay revert" data-steps="4" data-scene="reset">
+  <h2 class="t r">Hoàn tác commit: <span class="k">reset</span> hay <span class="k">revert</span>?</h2>
+  <div class="term r" style="padding:18px 28px"><div class="ln" style="position:relative;height:1.6em">
+    <span class="cap" data-at="0"><span class="o"># commit C chưa push</span></span>
+    <span class="cap" data-at="1"><span class="ps">$</span><span class="typed">git reset --soft HEAD~1</span></span>
+    <span class="cap" data-at="2"><span class="ps">$</span><span class="typed">git reset HEAD~1        # --mixed, mặc định</span></span>
+    <span class="cap" data-at="3"><span class="ps">$</span><span class="typed">git reset --hard HEAD~1</span></span>
+    <span class="cap" data-at="4"><span class="ps">$</span><span class="typed">git revert C            # C đã push lên main</span></span>
+  </div></div>
+  <svg class="graph r" id="gReset" width="1664" height="400"></svg>
+  <div style="position:relative;height:90px" class="r">
+    <div class="cap rule dark" data-at="0">Câu hỏi quyết định: commit đã push lên nhánh chung chưa?</div>
+    <div class="cap rule dark" data-at="1"><span style="color:var(--green)">--soft:</span> bỏ commit, thay đổi nằm sẵn ở staging. Hay dùng để commit lại.</div>
+    <div class="cap rule dark" data-at="2"><span style="color:var(--amber)">--mixed:</span> bỏ commit, thay đổi về working dir, chưa staged.</div>
+    <div class="cap rule dark" data-at="3"><span style="color:var(--red)">--hard:</span> bỏ cả thay đổi. C vẫn còn trong reflog để cứu.</div>
+    <div class="cap rule" data-at="4">Đã push lên nhánh chung → luôn <code>git revert</code>: thêm commit đảo ngược.</div>
+  </div>
+  <aside class="notes">Theo dõi con trỏ main và chip "thay đổi của C". --soft: main lùi về B, thay đổi nằm ở staging. --mixed: thay đổi về working dir. --hard: thay đổi biến mất, nhưng C vẫn còn trong reflog. Nếu C đã push lên nhánh chung: revert thêm commit đảo ngược, không viết lại lịch sử của ai.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Giải conflict" data-steps="5">
+  <h2 class="t r">Giải <span class="k">conflict</span> từng bước</h2>
+  <div class="row grow" style="gap:48px">
+    <div class="col grow" style="gap:18px">
+      <div class="hrow" style="font-size:30px"><span class="badge">1</span><p><code>git status</code>: xem file nào conflict</p></div>
+      <div class="hrow" data-in="1" style="font-size:30px"><span class="badge">2</span><p>Đọc cả hai phía, hiểu ý định từng bên</p></div>
+      <div class="hrow" data-in="2" style="font-size:30px"><span class="badge">3</span><p>Sửa thành bản đúng, xoá dấu conflict</p></div>
+      <div class="hrow" data-in="3" style="font-size:30px"><span class="badge">4</span><p>Build + chạy test lại</p></div>
+      <div class="hrow" data-in="4" style="font-size:30px"><span class="badge g">5</span><p><code>git add</code> rồi <code>git rebase --continue</code></p></div>
+      <div class="rule dark" data-in="5" style="font-size:28px;margin-top:12px">Rối quá? <code style="color:var(--git)">git rebase --abort</code> về như cũ.</div>
+    </div>
+    <div class="term r" style="width:820px;flex:none;font-size:27px">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln o">// src/config.ts</div>
+      <div style="position:relative;height:330px">
+        <div data-out="2" style="position:absolute;inset:0;transition:opacity .5s, transform .5s">
+          <div class="ln bad" style="font-weight:700">&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD (main)</div>
+          <div class="ln" style="background:rgba(89,168,255,.12)">const timeout = 30_000;</div>
+          <div class="ln bad" style="font-weight:700">=======</div>
+          <div class="ln" style="background:rgba(240,80,51,.12)">const timeout = env.TIMEOUT</div>
+          <div class="ln" style="background:rgba(240,80,51,.12)">  ?? 10_000;</div>
+          <div class="ln bad" style="font-weight:700">&gt;&gt;&gt;&gt;&gt;&gt;&gt; feat/GAV-88-config</div>
+        </div>
+        <div data-in="2" style="position:absolute;inset:0">
+          <div class="ln c">// giữ cả hai ý</div>
+          <div class="ln" style="background:rgba(69,196,111,.14)">const timeout = env.TIMEOUT</div>
+          <div class="ln" style="background:rgba(69,196,111,.14)">  ?? 30_000;</div>
+          <div class="ln"> </div>
+          <div class="ln" data-in="3"><span class="ps">$</span>bun test <span class="ok">  ✓ 214 pass</span></div>
+          <div class="ln" data-in="4"><span class="ps">$</span>git add src/config.ts &amp;&amp; git rebase --continue</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">Conflict không phải lỗi: Git chỉ nói hai người sửa cùng chỗ, nó không đoán được ý bạn. Bấm 2: đọc cả hai phía. Bấm 3: dấu conflict biến mất, bản đúng thường kết hợp cả hai ý, ở đây là cấu hình được nhưng giữ mặc định 30s của main. Sau đó build, test, add, continue. Rối thì abort, không mất gì.</aside>
+</section>
+
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Ours và theirs">
+  <h2 class="t r">Trong conflict, phía nào là <span class="k">của mình</span>?</h2>
+  <table class="tb r" style="font-size:27px">
+    <tr><th>Đang làm</th><th>Phía trên (HEAD, ours)</th><th>Phía dưới (theirs)</th></tr>
+    <tr><td>git merge feat/x<br><span class="mute" style="font-weight:400">khi đang ở main</span></td><td>main, nơi bạn đang đứng</td><td>feat/x, thứ được đem vào</td></tr>
+    <tr class="hl"><td>git rebase main<br><span class="mute" style="font-weight:400">khi đang ở feat/x</span></td><td><b>main</b>: rebase đứng trên main rồi áp commit của bạn lên</td><td><b>commit của bạn</b> đang được áp lại</td></tr>
+  </table>
+  <div class="row r" style="gap:28px">
+    <div class="card grow"><h3>Lấy nguyên một phía cho cả file</h3><div class="term" style="font-size:23px;padding:18px 22px"><div class="ln"><span class="ps">$</span>git checkout --ours   src/config.ts</div><div class="ln"><span class="ps">$</span>git checkout --theirs src/config.ts</div></div></div>
+    <div class="card grow"><h3>Trong VS Code</h3><p><b style="color:var(--fg)">Accept Current</b> = phía trên, <b style="color:var(--fg)">Accept Incoming</b> = phía dưới, <b style="color:var(--fg)">Accept Both</b> = giữ cả hai. Khi rebase, hai chữ này đảo nghĩa như bảng trên.</p></div>
+  </div>
+  <aside class="notes">Đây là chỗ gây nhầm nhiều nhất. Khi merge, phía trên là nhánh bạn đang đứng. Khi rebase thì ngược lại: phía trên là main, phía dưới mới là commit của bạn, vì rebase đứng trên main rồi áp lại từng commit của bạn. Nên khi rebase mà bấm Accept Current trong VS Code là đang chọn bản của main, không phải của bạn.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Commit nhầm vào main" data-steps="3" data-scene="wrongBranch">
+  <h2 class="t r">Commit nhầm vào <span class="k">main</span></h2>
+  <div class="term r" style="padding:18px 28px"><div class="ln" style="position:relative;height:1.6em">
+    <span class="cap" data-at="0"><span class="o"># quên tạo nhánh: X, Y nằm trên main (chưa push)</span></span>
+    <span class="cap" data-at="1"><span class="ps">$</span><span class="typed">git branch feat/GAV-123-x       # giữ X, Y</span></span>
+    <span class="cap" data-at="2"><span class="ps">$</span><span class="typed">git reset --hard origin/main    # main về như remote</span></span>
+    <span class="cap" data-at="3"><span class="ps">$</span><span class="typed">git switch feat/GAV-123-x</span></span>
+  </div></div>
+  <svg class="graph r" id="gWrong" width="1664" height="460"></svg>
+  <p class="lead r" style="font-size:28px">Branch chỉ là con trỏ, nên sửa rất rẻ. Commit nhầm vào nhánh khác đã có: <code>git cherry-pick &lt;sha&gt;</code> sang nhánh đúng.</p>
+  <aside class="notes">Quên tạo nhánh, commit thẳng X, Y vào main local. Bấm 1: tạo nhánh mới tại Y để giữ commit. Bấm 2: kéo con trỏ main về origin/main; X, Y giờ chỉ còn thuộc nhánh mới. Bấm 3: chuyển sang nhánh đó làm tiếp. Nhớ git fetch trước để origin/main là bản mới nhất.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Force và force-with-lease" data-steps="2" data-scene="lease">
+  <h2 class="t r">Nhánh bị tụt sau main: <span class="k">--force-with-lease</span></h2>
+  <div class="row grow" style="gap:40px">
+    <svg class="graph r" id="gLease" width="1120" height="560"></svg>
+    <div class="grow" style="position:relative">
+      <div class="cap" data-at="0"><p class="eyebrow">Tình huống</p><h3 style="font-size:40px;margin:12px 0">Bạn vừa rebase xong</h3><p class="lead">Trong lúc đó đồng đội đẩy T lên cùng nhánh. Máy bạn chưa fetch nên không biết.</p></div>
+      <div class="cap" data-at="1"><p class="eyebrow" style="color:var(--red)">git push --force</p><h3 style="font-size:40px;margin:12px 0;color:var(--red)">Ghi đè mù</h3><p class="lead">Server bị thay bằng bản của bạn. Commit T của đồng đội mất khỏi nhánh.</p></div>
+      <div class="cap" data-at="2"><p class="eyebrow" style="color:var(--green)">git push --force-with-lease</p><h3 style="font-size:40px;margin:12px 0;color:var(--green)">Từ chối, T an toàn</h3><p class="lead">Chỉ ghi đè nếu server vẫn đúng như lần fetch cuối. Fetch, rebase lại, rồi push.</p></div>
+    </div>
+  </div>
+  <aside class="notes">Lane trên là server, lane dưới là máy bạn sau khi rebase. Đồng đội vừa đẩy T. Bấm 1: --force ghi đè mù, T biến mất khỏi nhánh trên server. Bấm 2: --force-with-lease thấy server khác với lần fetch cuối nên từ chối; T an toàn. Quy trình đúng: git fetch, git rebase origin/main, chạy test, git push --force-with-lease.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Reflog" data-steps="2">
+  <h2 class="t r">Mất commit? <span class="k">reflog</span> cứu được</h2>
+  <div class="row grow" style="gap:40px">
+    <div class="col grow" style="gap:28px">
+      <div class="term r" style="font-size:26px">
+        <div class="bar"><i></i><i></i><i></i></div>
+        <div class="ln"><span class="ps">$</span>git reflog</div>
+        <div class="ln"><span class="c">a1b2c3d</span> HEAD@{0}: reset: moving to HEAD~3</div>
+        <div class="ln hlx" data-add="1:hl"><span class="c">9f8e7d6</span> HEAD@{1}: commit: feat(cart): coupon</div>
+        <div class="ln"><span class="c">3c4d5e6</span> HEAD@{2}: commit: test(cart): add cases</div>
+        <div class="ln"> </div>
+        <div class="ln" data-in="2"><span class="ps">$</span>git branch rescue 9f8e7d6 <span class="ok">  ✓ cứu xong</span></div>
+      </div>
+      <ul style="font-size:29px;line-height:1.5;margin:0;padding-left:34px" class="r"><li>Ghi mọi lần HEAD di chuyển: commit, reset, rebase, switch</li><li>Chỉ ở máy bạn, chỉ cứu thứ đã từng commit</li></ul>
+    </div>
+    <div class="card r" style="width:480px;flex:none;align-items:center;justify-content:center;text-align:center">
+      <div style="font-family:var(--display);font-weight:800;font-size:220px;line-height:1;color:var(--git)" data-count="90">90</div>
+      <p style="font-size:30px">ngày: Git giữ lịch sử reflog ở máy bạn theo mặc định</p>
+      <p style="font-size:28px;color:var(--green);font-weight:700;margin-top:10px">Đã commit thì gần như không mất được.</p>
+    </div>
+  </div>
+  <aside class="notes">reflog ghi lại mọi lần HEAD di chuyển ở máy bạn. Reset --hard nhầm, rebase hỏng, xoá nhầm nhánh: commit vẫn còn, chỉ là không còn tên nào trỏ vào. Bấm 1: tìm dòng ngay trước sự cố. Bấm 2: tạo nhánh tại đó. Đây là lý do "commit thường xuyên" là lưới an toàn.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Bisect" data-steps="4" data-scene="bisect">
+  <h2 class="t r"><span class="k">git bisect</span>: tìm commit gây bug bằng chia đôi</h2>
+  <svg class="graph r" id="gBisect" width="1664" height="360"></svg>
+  <div class="row r" style="gap:40px;align-items:stretch">
+    <div class="term grow" style="font-size:26px"><div style="position:relative;height:120px">
+      <div class="cap" data-at="0"><div class="ln"><span class="ps">$</span><span class="typed">git bisect start &amp;&amp; git bisect bad &amp;&amp; git bisect good v1.3.0</span></div><div class="ln o">Bisecting: 7 revisions left to test (roughly 3 steps)</div></div>
+      <div class="cap" data-at="1"><div class="ln o"># Git checkout commit 8, bạn chạy test: pass</div><div class="ln"><span class="ps">$</span><span class="typed">git bisect good</span></div></div>
+      <div class="cap" data-at="2"><div class="ln o"># commit 12: test fail</div><div class="ln"><span class="ps">$</span><span class="typed">git bisect bad</span></div></div>
+      <div class="cap" data-at="3"><div class="ln o"># commit 10: test pass</div><div class="ln"><span class="ps">$</span><span class="typed">git bisect good</span></div></div>
+      <div class="cap" data-at="4"><div class="ln bad">3f2a9c1 is the first bad commit</div><div class="ln"><span class="ps">$</span><span class="typed">git bisect reset</span></div><div class="ln c"># tự động: git bisect run bun test cart</div></div>
+    </div></div>
+    <div class="card" style="width:430px;flex:none;justify-content:center;text-align:center;gap:4px">
+      <div style="font-family:var(--display);font-weight:800;font-size:96px;line-height:1"><span style="color:var(--git)">16</span> → 4</div>
+      <p>commit cần kiểm → số lần thử. 1000 commit chỉ cần khoảng 10.</p>
+    </div>
+  </div>
+  <aside class="notes">Mỗi lần bấm là một lượt bisect: Git checkout commit ở giữa khoảng còn nghi ngờ, bạn chạy test và báo good hoặc bad, khoảng thu lại một nửa. 16 commit chỉ cần 4 lượt; 1000 commit chỉ cần khoảng 10. Tự động hoá bằng git bisect run kèm script test. Điều kiện: mọi commit đều build được, lại thêm lý do để commit gọn.</aside>
+</section>
+
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="cherry-pick" data-steps="1" data-scene="cherry">
+  <h2 class="t r"><span class="k">cherry-pick</span>: chép một commit sang nhánh khác</h2>
+  <div class="term r" style="padding:18px 28px"><div class="ln" style="position:relative;height:3.2em">
+    <div class="cap" data-at="0"><div class="ln o"># bug đã sửa ở main (commit H), bản 1.4 đang chạy production cũng cần</div><div class="ln"><span class="ps">$</span>git switch release/1.4</div></div>
+    <div class="cap" data-at="1"><div class="ln"><span class="ps">$</span><span class="typed">git cherry-pick -x 7c8d9e0</span></div><div class="ln ok">[release/1.4 b4c5d6e] fix(cart): round total</div></div>
+  </div></div>
+  <svg class="graph r" id="gCherry" width="1664" height="400"></svg>
+  <p class="lead r" style="font-size:28px"><code>-x</code> thêm dòng <span class="mono" style="color:var(--fg)">(cherry picked from commit 7c8d9e0)</span> vào message, để sau này biết H′ đến từ đâu.</p>
+  <aside class="notes">Tình huống điển hình: bug đã được sửa ở main, nhưng bản 1.4 đang chạy production cũng cần bản vá. cherry-pick chép đúng thay đổi của commit H thành commit mới H′ trên nhánh release. Hash khác vì cha khác. Đừng dùng cherry-pick để chuyển cả loạt commit giữa các nhánh thường xuyên: đó là dấu hiệu quy trình nhánh có vấn đề.</aside>
+</section>
+
+<section class="slide" data-sec="04 · Tình huống thực tế" data-title="Cherry-pick, log -S, blame">
+  <h2 class="t r">Công cụ điều tra khác</h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:28px">
+    <div class="card r"><div class="hrow"><span class="badge">1</span><h3 class="mono">cherry-pick</h3></div><p>Chép một commit sang nhánh khác, ví dụ backport hotfix.</p><div class="term auto" style="font-size:22px;padding:20px 22px"><div class="ln"><span class="ps">$</span><span class="typed">git switch release/1.4</span></div><div class="ln"><span class="ps">$</span><span class="typed">git cherry-pick -x &lt;sha&gt;</span></div></div></div>
+    <div class="card r"><div class="hrow"><span class="badge b">2</span><h3 class="mono">log -S</h3></div><p>Commit nào đã thêm hoặc xoá một đoạn code.</p><div class="term auto" style="font-size:22px;padding:20px 22px"><div class="ln"><span class="ps">$</span><span class="typed">git log -S "applyCoupon"</span></div><div class="ln"><span class="ps">$</span><span class="typed">git log -S "applyCoupon" -p</span></div></div></div>
+    <div class="card r"><div class="hrow"><span class="badge v">3</span><h3 class="mono">blame</h3></div><p>Ai sửa dòng này, trong commit nào, vì sao.</p><div class="term auto" style="font-size:22px;padding:20px 22px"><div class="ln"><span class="ps">$</span><span class="typed">git blame -L 40,60 cart.ts</span></div><div class="ln"><span class="ps">$</span><span class="typed">git show &lt;sha&gt;</span></div></div></div>
+  </div>
+  <p class="lead r" style="font-size:30px">Câu "vì sao" nằm trong commit message. Lại thêm một lý do để viết message tử tế.</p>
+  <aside class="notes">cherry-pick chép một commit sang nhánh khác; -x ghi lại commit gốc vào message. log -S tìm commit thêm hoặc xoá một chuỗi. blame trả lời ai sửa dòng này; git show cho xem commit đó và message giải thích vì sao.</aside>
+</section>
+
+<!-- ============ 05 ============ -->
+<section class="slide divider" data-sec="05 · An toàn &amp; sự cố" data-tr="zoom" data-title="05 An toàn và sự cố">
+  <div class="num" data-n="05">05</div>
+  <h2>An toàn &amp; sự cố</h2>
+  <p>Những lỗi không hoàn tác được, và cách để không bao giờ gặp.</p>
+  <svg class="deco" viewBox="0 0 520 1080"><path d="M160 140 V940" stroke="#2b3440"/><path d="M160 360 C160 440 360 410 360 490 V640 C360 720 160 700 160 780" stroke="#45c46f"/><circle cx="160" cy="240" r="22" fill="#e9edf1" style="--d:0"/><circle cx="160" cy="360" r="22" fill="#e9edf1" style="--d:150"/><circle cx="360" cy="520" r="22" fill="#45c46f" style="--d:450"/><circle cx="360" cy="640" r="22" fill="#45c46f" style="--d:600"/><circle cx="160" cy="780" r="22" fill="#e9edf1" style="--d:900"/><circle cx="160" cy="900" r="22" fill="#e9edf1" style="--d:1050"/></svg>
+  <aside class="notes">Phần lớn lỗi Git sửa được nhờ reflog. Phần này nói về số ít lỗi không sửa được: ghi đè lịch sử người khác, và lộ secret.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Năm điều không bao giờ làm" data-steps="5">
+  <h2 class="t r">Năm điều <span class="k">không bao giờ</span> làm</h2>
+  <div class="col" style="gap:18px">
+    <div class="card" data-in="1" data-fx="shake" style="flex-direction:row;align-items:center;gap:28px;padding:22px 30px"><span class="badge r">1</span><h3 style="font-size:31px;width:720px;flex:none">push --force lên main / nhánh chung</h3><p>Dùng --force-with-lease, chỉ trên nhánh của mình</p></div>
+    <div class="card" data-in="2" data-fx="shake" style="flex-direction:row;align-items:center;gap:28px;padding:22px 30px"><span class="badge r">2</span><h3 style="font-size:31px;width:720px;flex:none">Commit secret: .env, API key, token</h3><p>.gitignore, biến môi trường, secret scanning</p></div>
+    <div class="card" data-in="3" data-fx="shake" style="flex-direction:row;align-items:center;gap:28px;padding:22px 30px"><span class="badge r">3</span><h3 style="font-size:31px;width:720px;flex:none">Rebase/amend commit người khác đã pull</h3><p>Lịch sử của họ lệch, sinh commit trùng lặp</p></div>
+    <div class="card" data-in="4" data-fx="shake" style="flex-direction:row;align-items:center;gap:28px;padding:22px 30px"><span class="badge r">4</span><h3 style="font-size:31px;width:720px;flex:none">Commit file lớn, node_modules, build</h3><p>Repo phình vĩnh viễn; dùng .gitignore, Git LFS</p></div>
+    <div class="card" data-in="5" data-fx="shake" style="flex-direction:row;align-items:center;gap:28px;padding:22px 30px"><span class="badge r">5</span><h3 style="font-size:31px;width:720px;flex:none">reset --hard / clean -fd khi chưa xem status</h3><p>Thay đổi chưa commit mất thật, không có undo</p></div>
+  </div>
+  <aside class="notes">Đọc từng điều kèm lý do. Điều 1 và 3 cùng một gốc: viết lại lịch sử mà người khác đã có. Điều 2 không sửa được bằng Git: secret đã lên server coi như đã lộ. Điều 4 làm repo phình vĩnh viễn. Điều 5: mọi lệnh huỷ phải đi sau một lần nhìn git status.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Lỡ đẩy secret" data-steps="6" data-scene="secret">
+  <h2 class="t r">Lỡ đẩy <span class="k">secret</span> lên repo: làm gì ngay</h2>
+  <div class="row grow" style="gap:56px">
+    <div class="col" style="width:760px;flex:none;gap:28px">
+      <svg class="graph r" id="gSecret" width="760" height="280"></svg>
+      <div class="card" data-in="1" style="flex-direction:row;align-items:center;gap:24px;border-color:var(--red)">
+        <span class="badge r"><svg><use href="#i-clock"/></svg></span>
+        <div><p style="color:var(--fg);font-size:28px">Bot quét repo tìm thấy key sau</p><p class="mono" style="font-size:52px;color:var(--red);font-weight:700" data-count="47" data-fmt="clock">00:00:47</p></div>
+      </div>
+      <p class="lead" data-in="2" style="font-size:30px;color:var(--fg)"><b style="color:var(--red)">Xoá ở commit sau KHÔNG xoá khỏi lịch sử.</b> Ai clone hay fetch đều có B.</p>
+    </div>
+    <div class="col grow" style="gap:26px">
+      <div class="hrow" data-in="3" data-fx="right"><span class="badge r">1</span><div><h3 style="font-size:34px">Thu hồi, rotate key ngay</h3><p class="mute" style="font-size:27px">Trước mọi thứ khác. Không chờ dọn code.</p></div></div>
+      <div class="hrow" data-in="4" data-fx="right"><span class="badge n">2</span><div><h3 style="font-size:34px">Chuyển sang biến môi trường</h3><p class="mute" style="font-size:27px">Secret manager hoặc CI variables; thêm vào .gitignore.</p></div></div>
+      <div class="hrow" data-in="5" data-fx="right"><span class="badge n">3</span><div><h3 style="font-size:34px">Dọn lịch sử nếu cần</h3><p class="mute" style="font-size:27px"><code>git filter-repo --path .env --invert-paths</code>; cả team clone lại.</p></div></div>
+      <div class="hrow" data-in="6" data-fx="right"><span class="badge n">4</span><div><h3 style="font-size:34px">Báo security, kiểm log</h3><p class="mute" style="font-size:27px">Xem key đã bị dùng chưa trong khoảng bị lộ.</p></div></div>
+    </div>
+  </div>
+  <aside class="notes">Bấm 1: đồng hồ cho thấy bot quét repo công khai tìm key chỉ trong vài chục giây đến vài phút. Bấm 2: commit xoá .env ở sau không xoá được key khỏi lịch sử. Rồi bốn bước theo đúng thứ tự: thu hồi key TRƯỚC, dọn code sau. filter-repo chỉ là dọn dẹp, phải phối hợp cả team, và không thay được việc rotate key.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Giữ repo sạch">
+  <h2 class="t r">Giữ repo <span class="k">sạch</span></h2>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:28px;flex:1">
+    <div class="col r"><h3 class="mono" style="color:var(--git);font-size:36px">.gitignore</h3><p class="mute" style="font-size:27px">Không commit thứ máy sinh ra</p><div class="term grow" style="font-size:24px"><div class="ln">node_modules/</div><div class="ln">dist/</div><div class="ln">.next/</div><div class="ln">.env*</div><div class="ln ok">!.env.example</div><div class="ln">coverage/</div></div></div>
+    <div class="col r"><h3 class="mono" style="color:var(--git);font-size:36px">Git LFS</h3><p class="mute" style="font-size:27px">File binary lớn</p><div class="term grow" style="font-size:24px"><div class="ln"><span class="ps">$</span>git lfs install</div><div class="ln"><span class="ps">$</span>git lfs track "*.psd"</div><div class="ln"><span class="ps">$</span>git lfs track "*.mp4"</div><div class="ln"><span class="ps">$</span>git add .gitattributes</div></div></div>
+    <div class="col r"><h3 class="mono" style="color:var(--git);font-size:36px">.gitattributes</h3><p class="mute" style="font-size:27px">Chuẩn hoá xuống dòng</p><div class="term grow" style="font-size:24px"><div class="ln">* text=auto eol=lf</div><div class="ln">*.png binary</div><div class="ln">*.sh  text eol=lf</div><div class="ln">*.bat text eol=crlf</div></div></div>
+  </div>
+  <aside class="notes">.gitignore ở gốc repo cho thứ project sinh ra; .gitignore global cho rác của máy bạn. File binary lớn dùng Git LFS, nếu không mỗi phiên bản nằm vĩnh viễn trong repo. .gitattributes chuẩn hoá xuống dòng để không có diff đổi toàn bộ file giữa Windows và macOS.</aside>
+</section>
+
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title=".gitignore viết thế nào">
+  <h2 class="t r"><span class="k">.gitignore</span> viết thế nào</h2>
+  <div class="row grow" style="gap:40px">
+    <table class="tb r grow" style="font-size:26px">
+      <tr><th>Dòng</th><th>Bỏ qua</th></tr>
+      <tr><td>*.log</td><td>Mọi file .log, ở mọi thư mục</td></tr>
+      <tr><td>/dist</td><td>Chỉ thư mục dist ở gốc repo</td></tr>
+      <tr><td>build/</td><td>Mọi thư mục tên build</td></tr>
+      <tr><td>.env*</td><td>.env, .env.local, .env.production</td></tr>
+      <tr><td>!.env.example</td><td>Ngoại lệ: vẫn commit file này</td></tr>
+      <tr><td>**/tmp/</td><td>Thư mục tmp ở mọi cấp</td></tr>
+      <tr><td># ghi chú</td><td>Dòng chú thích</td></tr>
+    </table>
+    <div class="col" style="width:640px;flex:none">
+      <div class="card r" style="gap:12px"><h3>File này bị bỏ qua vì dòng nào?</h3><div class="term" style="font-size:22px;padding:18px 22px"><div class="ln"><span class="ps">$</span>git check-ignore -v .env.local</div><div class="ln o">.gitignore:4:.env*   .env.local</div></div></div>
+      <div class="card r" style="gap:12px;border-color:var(--amber)"><h3>Lỡ commit rồi mới thêm vào .gitignore?</h3><p>.gitignore chỉ áp cho file chưa được track. Phải gỡ khỏi Git:</p><div class="term" style="font-size:22px;padding:18px 22px"><div class="ln"><span class="ps">$</span>git rm --cached .env</div><div class="ln"><span class="ps">$</span>git commit -m "chore: untrack .env"</div></div></div>
+    </div>
+  </div>
+  <aside class="notes">Vài quy tắc đủ dùng: dấu sao khớp mọi ký tự, gạch chéo ở đầu là chỉ ở gốc repo, gạch chéo ở cuối là chỉ thư mục, dấu chấm than là ngoại lệ. git check-ignore -v cho biết dòng nào đang bỏ qua một file. Lỗi hay gặp: thêm .env vào .gitignore sau khi đã commit nó; Git vẫn theo dõi cho tới khi git rm --cached. Và nếu đó là secret thì xem lại slide lộ secret.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Git LFS là gì">
+  <h2 class="t r"><span class="k">Git LFS</span> là gì</h2>
+  <div class="row grow" style="gap:40px;align-items:stretch">
+    <div class="col grow">
+      <p class="lead r" style="font-size:30px;color:var(--fg)">Large File Storage: repo chỉ giữ một <b>file con trỏ</b> vài dòng, file thật nằm ở kho riêng và chỉ tải khi cần.</p>
+      <div class="card r" style="gap:12px"><h3 class="mono" style="font-size:28px">design/banner.psd <span class="mute" style="font-weight:400">trong repo</span></h3>
+        <div class="term" style="font-size:22px;padding:18px 22px"><div class="ln">version https://git-lfs.github.com/spec/v1</div><div class="ln">oid sha256:4d7a2146b3e0f6…</div><div class="ln">size 214958234</div></div></div>
+      <div class="term r" style="font-size:24px"><div class="ln"><span class="ps">$</span>git lfs install</div><div class="ln"><span class="ps">$</span>git lfs track "*.psd" "*.mp4"</div><div class="ln"><span class="ps">$</span>git add .gitattributes design/banner.psd</div></div>
+    </div>
+    <div class="card r" style="width:560px;flex:none;justify-content:center;gap:20px">
+      <p class="eyebrow">Sửa file 200 MB 10 lần</p>
+      <div class="hrow" style="justify-content:space-between"><span style="font-size:28px">Không LFS</span><b style="font-family:var(--display);font-size:72px;color:var(--red)">2 GB</b></div>
+      <p>Mọi phiên bản nằm vĩnh viễn trong repo, ai clone cũng phải tải hết.</p>
+      <div class="hrow" style="justify-content:space-between"><span style="font-size:28px">Có LFS</span><b style="font-family:var(--display);font-size:72px;color:var(--green)">200 MB</b></div>
+      <p>Clone chỉ tải đúng phiên bản đang dùng.</p>
+    </div>
+  </div>
+  <aside class="notes">Git lưu mọi phiên bản của mọi file mãi mãi. Với code thì không sao, với file thiết kế hay video 200 MB thì repo phình rất nhanh. LFS thay file thật bằng một file con trỏ ba dòng như hình; file thật nằm ở kho LFS và chỉ được tải về đúng phiên bản bạn checkout. Cần bật LFS trước khi commit file lớn lần đầu.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Hook là gì" data-steps="7">
+  <h2 class="t r"><span class="k">Hook</span> là gì</h2>
+  <p class="lead r" style="font-size:31px;color:var(--fg);max-width:1600px">Script Git tự chạy ở một thời điểm cố định. Script <b style="color:var(--green)">trả về 0</b> thì Git đi tiếp, <b style="color:var(--red)">khác 0</b> thì Git dừng thao tác.</p>
+  <div class="col r" style="gap:22px">
+    <div class="hrow" style="gap:14px;flex-wrap:nowrap">
+      <span class="mono" style="width:220px;flex:none;font-size:26px;color:var(--mute)">git commit</span>
+      <div class="hk2 hook" data-add="1:lit" data-x="7:fail">pre-commit</div><span class="mute">→</span>
+      <div class="hk2" data-add="2:lit" data-x="7:off">editor: viết message</div><span class="mute">→</span>
+      <div class="hk2 hook" data-add="3:lit" data-x="7:off">commit-msg</div><span class="mute">→</span>
+      <div class="hk2 done" data-add="4:lit" data-x="7:off">✓ commit được tạo</div>
+    </div>
+    <div class="hrow" style="gap:14px">
+      <span class="mono" style="width:220px;flex:none;font-size:26px;color:var(--mute)">git push</span>
+      <div class="hk2 hook" data-add="5:lit" data-x="7:off">pre-push</div><span class="mute">→</span>
+      <div class="hk2 done" data-add="6:lit" data-x="7:off">✓ gửi lên server</div>
+    </div>
+  </div>
+  <div class="row grow" style="gap:32px">
+    <div class="grow" style="position:relative">
+<div class="cap" data-at="0"><p class="eyebrow">Ô màu cam là hook</p><h3 style="font-size:40px;margin:12px 0">Bấm để đi theo một lần commit và push</h3><p class="lead" style="font-size:30px"></p></div>
+<div class="cap" data-at="1"><p class="eyebrow">pre-commit</p><h3 style="font-size:40px;margin:12px 0">Chạy trước khi tạo commit</h3><p class="lead" style="font-size:30px">Kiểm tra code đã stage: lint, format, quét secret.</p></div>
+<div class="cap" data-at="2"><p class="eyebrow">Không phải hook</p><h3 style="font-size:40px;margin:12px 0">Git mở editor để viết message</h3><p class="lead" style="font-size:30px"></p></div>
+<div class="cap" data-at="3"><p class="eyebrow">commit-msg</p><h3 style="font-size:40px;margin:12px 0">Chạy sau khi viết message</h3><p class="lead" style="font-size:30px">Kiểm message đúng chuẩn Conventional Commits không.</p></div>
+<div class="cap" data-at="4"><p class="eyebrow">Xong</p><h3 style="font-size:40px;margin:12px 0">Commit được tạo</h3><p class="lead" style="font-size:30px"></p></div>
+<div class="cap" data-at="5"><p class="eyebrow">pre-push</p><h3 style="font-size:40px;margin:12px 0">Chạy trước khi gửi lên server</h3><p class="lead" style="font-size:30px">Chạy test nhanh, type check.</p></div>
+<div class="cap" data-at="6"><p class="eyebrow">Xong</p><h3 style="font-size:40px;margin:12px 0">Commit lên server</h3><p class="lead" style="font-size:30px"></p></div>
+<div class="cap" data-at="7"><p class="eyebrow">Khi hook thất bại</p><h3 style="font-size:40px;margin:12px 0">pre-commit trả về 1</h3><p class="lead" style="font-size:30px">Git dừng ngay: không có commit, không có gì bị mất. Sửa rồi commit lại.</p></div>
+    </div>
+    <div class="term r" style="width:760px;flex:none;font-size:23px">
+      <div class="ln c"># .git/hooks/pre-commit  (ví dụ tự viết)</div>
+      <div class="ln">#!/bin/sh</div>
+      <div class="ln">npx eslint --max-warnings=0 $(git diff --cached \</div>
+      <div class="ln">    --name-only --diff-filter=ACM -- '*.ts')</div>
+      <div class="ln c"># eslint lỗi → exit 1 → commit bị chặn</div>
+    </div>
+  </div>
+  <aside class="notes">Hook là script Git tự chạy ở các thời điểm cố định. Bấm để đi qua một lần commit và push: pre-commit chạy trước khi commit được tạo, commit-msg chạy sau khi bạn viết message, pre-push chạy trước khi gửi lên server. Bước cuối: nếu script trả mã lỗi khác 0, Git dừng thao tác. Lưu ý: thư mục .git/hooks không được commit, nên team dùng husky, lefthook hoặc pre-commit để chia sẻ hook qua repo. Hai slide sau là ví dụ cụ thể.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Ví dụ: pre-commit" data-steps="2">
+  <h2 class="t r">Ví dụ: <span class="k">pre-commit</span> chặn một commit</h2>
+  <div class="row grow" style="gap:40px">
+    <div class="col" style="width:700px;flex:none;gap:20px">
+      <div class="term r" style="font-size:23px"><div class="ln c"># .husky/pre-commit</div><div class="ln">npx lint-staged</div></div>
+      <div class="term r" style="font-size:23px"><div class="ln c">// package.json</div><div class="ln">"lint-staged": {</div><div class="ln">  "*.{ts,tsx}": ["eslint --fix",</div><div class="ln">                "prettier --write"],</div><div class="ln">  "*": "gitleaks protect --staged"</div><div class="ln">}</div></div>
+      <div class="card r" style="padding:22px 26px;gap:8px"><p><b style="color:var(--fg)">husky</b>: cài hook từ repo cho cả team. <b style="color:var(--fg)">lint-staged</b>: chỉ chạy trên file đã stage, nên nhanh. <b style="color:var(--fg)">gitleaks</b>: quét secret.</p></div>
+    </div>
+    <div class="term r grow" style="font-size:24px">
+      <div class="bar"><i></i><i></i><i></i></div>
+      <div class="ln"><span class="ps">$</span>git commit -m "feat(cart): coupon"</div>
+      <div class="ln ok">✔ Preparing lint-staged...</div>
+      <div class="ln bad">✖ eslint --fix:</div>
+      <div class="ln">  src/cart.ts  14:3  error  'sum' is never used</div>
+      <div class="ln bad">husky - pre-commit script failed (code 1)</div>
+      <div class="ln" style="color:var(--amber)" data-in="1"># → không có commit nào được tạo. Sửa cart.ts…</div>
+      <div class="ln" data-in="2"><span class="ps">$</span>git commit -m "feat(cart): coupon"</div>
+      <div class="ln ok" data-in="2">✔ eslint --fix  ✔ prettier --write  ✔ gitleaks</div>
+      <div class="ln" data-in="2">[feat/GAV-123 9f8e7d6] feat(cart): coupon</div>
+    </div>
+  </div>
+  <aside class="notes">Bên trái là cấu hình thật: husky chạy lint-staged mỗi lần commit; lint-staged chạy eslint và prettier trên các file ts đã stage, và gitleaks quét mọi file để bắt key bị lộ. Bên phải: lần commit đầu bị chặn vì biến không dùng. Bấm 1: không có commit nào được tạo. Bấm 2: sửa xong, commit lại, mọi bước qua.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Ví dụ: commit-msg và pre-push" data-steps="2">
+  <h2 class="t r">Ví dụ: <span class="k">commit-msg</span> và <span class="k">pre-push</span></h2>
+  <div class="row grow" style="gap:40px">
+    <div class="col grow" style="gap:20px">
+      <div class="term r" style="font-size:23px"><div class="ln c"># .husky/commit-msg</div><div class="ln">npx --no -- commitlint --edit "$1"</div><div class="ln c">// commitlint.config.js</div><div class="ln">export default { extends: ["@commitlint/config-conventional"] }</div></div>
+      <div class="term r" style="font-size:24px">
+        <div class="ln"><span class="ps">$</span>git commit -m "fix bug"</div>
+        <div class="ln o">⧗   input: fix bug</div>
+        <div class="ln bad">✖   subject may not be empty [subject-empty]</div>
+        <div class="ln bad">✖   type may not be empty [type-empty]</div>
+        <div class="ln" data-in="1"><span class="ps">$</span>git commit -m "fix(cart): round total to 2 decimals"</div>
+        <div class="ln ok" data-in="1">[fix/GAV-207 2c3d4e5] fix(cart): round total to 2 decimals</div>
+      </div>
+    </div>
+    <div class="col" style="width:640px;flex:none;gap:20px">
+      <div class="term r" style="font-size:23px"><div class="ln c"># .husky/pre-push</div><div class="ln">bun run typecheck &amp;&amp; bun test --bail</div></div>
+      <div class="term" data-in="2" style="font-size:23px"><div class="ln"><span class="ps">$</span>git push</div><div class="ln bad">✖ cart.test.ts › applies two coupons</div><div class="ln bad">husky - pre-push script failed (code 1)</div><div class="ln" style="color:var(--amber)"># → không có gì được gửi lên server</div></div>
+      <div class="card r" style="padding:22px 26px"><p><b style="color:var(--fg)">commitlint</b> đọc message và so với quy tắc Conventional Commits. <b style="color:var(--fg)">pre-push</b> chặn đẩy code làm hỏng test.</p></div>
+    </div>
+  </div>
+  <aside class="notes">commitlint chạy trong hook commit-msg: "fix bug" bị từ chối vì thiếu type theo chuẩn. Bấm 1: viết đúng chuẩn thì qua. Bấm 2: pre-push chạy type check và test trước khi gửi lên server; test hỏng thì không có gì được đẩy lên. Giữ pre-push nhanh (dưới khoảng 30 giây), phần nặng để CI chạy.</aside>
+</section>
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="Hook và CI" data-steps="6" data-scene="hooks">
+  <h2 class="t r">Để máy nhắc, thay vì <span class="k">dựa vào trí nhớ</span></h2>
+  <div class="r" id="hk" style="position:relative;height:450px"></div>
+  <div style="position:relative;height:110px" class="r">
+    <div class="cap rule dark" data-at="0">Một commit đi qua năm cửa trước khi vào main.</div>
+    <div class="cap rule dark" data-at="1,2,3">Hook local chạy nhanh trên máy bạn: format, lint, kiểm message, test nhanh.</div>
+    <div class="cap rule dark" data-at="4,5">CI chạy đầy đủ trên MR; main được bảo vệ, không ai push thẳng.</div>
+    <div class="cap rule" data-at="6"><code>--no-verify</code> bỏ qua được hook local, nên CI mới là cổng bắt buộc.</div>
+  </div>
+  <aside class="notes">Theo dõi commit đi qua từng cửa. Ba cửa đầu là hook local (husky, lefthook hoặc pre-commit): format, lint, quét secret, kiểm message, test nhanh. Cửa 4 là CI trên MR, cửa 5 là main được bảo vệ. Bấm cuối: ai đó dùng --no-verify nhảy qua hook local, nhưng vẫn bị CI chặn. Đó là lý do CI là cổng bắt buộc.</aside>
+</section>
+
+<!-- ============ wrap-up ============ -->
+
+<section class="slide" data-sec="05 · An toàn &amp; sự cố" data-title="CI và nhánh được bảo vệ" data-steps="7">
+  <h2 class="t r"><span class="k">CI</span> và nhánh được bảo vệ</h2>
+  <p class="lead r" style="font-size:30px;color:var(--fg)">CI (Continuous Integration): server tự chạy kiểm tra cho mọi MR, trên máy sạch, không ai bỏ qua được.</p>
+  <div class="hrow r" style="gap:14px">
+    <span class="pill ci" data-add="1:pass">install</span><span class="mute">→</span><span class="pill ci" data-add="2:pass">lint</span><span class="mute">→</span><span class="pill ci" data-add="3:pass">typecheck</span><span class="mute">→</span><span class="pill ci" data-add="4:pass">test</span><span class="mute">→</span><span class="pill ci" data-add="5:pass">build</span><span class="mute">→</span><span class="pill ci" data-add="6:pass">secret scan</span>
+  </div>
+  <div class="row grow" style="gap:40px">
+    <div class="term r grow" style="font-size:24px">
+      <div class="ln c"># .gitlab-ci.yml (rút gọn)</div>
+      <div class="ln">stages: [check, test]</div>
+      <div class="ln">lint:</div><div class="ln">  stage: check</div><div class="ln">  script: bun run lint</div>
+      <div class="ln">test:</div><div class="ln">  stage: test</div><div class="ln">  script: bun test</div>
+    </div>
+    <div class="card" data-in="7" style="width:760px;flex:none;gap:14px">
+      <h3>Settings › Repository › Protected branches</h3>
+      <div class="hrow" style="justify-content:space-between;font-size:26px"><span>main · Allowed to push</span><b style="color:var(--red)">No one</b></div>
+      <div class="hrow" style="justify-content:space-between;font-size:26px"><span>main · Allowed to merge</span><b>Maintainers</b></div>
+      <div class="hrow" style="font-size:26px;gap:12px"><span class="badge g" style="width:36px;height:36px"><svg style="width:20px;height:20px"><use href="#i-check"/></svg></span>Pipelines must succeed</div>
+      <div class="hrow" style="font-size:26px;gap:12px"><span class="badge g" style="width:36px;height:36px"><svg style="width:20px;height:20px"><use href="#i-check"/></svg></span>All threads must be resolved</div>
+    </div>
+  </div>
+  <aside class="notes">CI là server tự chạy cùng bộ kiểm tra cho mọi MR trên một máy sạch: không phụ thuộc máy ai, không ai --no-verify được. Bấm để các stage lần lượt xanh. Bấm cuối: cài đặt nhánh được bảo vệ trên GitLab: không ai push thẳng vào main, chỉ merge qua MR, và chỉ merge được khi pipeline xanh và mọi thread review đã được giải quyết. Đây là thứ biến quy ước thành luật.</aside>
+</section>
+
+<section class="slide" data-sec="Tổng kết" data-title="Từ điển nhanh: khái niệm">
+  <h2 class="t r">Từ điển nhanh: <span class="k">khái niệm</span></h2>
+  <div class="gl">
+    <div class="r"><b>commit</b><span>Ảnh chụp toàn bộ project, có hash, tác giả, message, commit cha.</span></div>
+    <div class="r"><b>hash (SHA)</b><span>Mã định danh tính từ nội dung. Viết tắt 7 ký tự: 9f8e7d6.</span></div>
+    <div class="r"><b>HEAD</b><span>Con trỏ "bạn đang đứng ở đây". HEAD~1 là commit trước đó.</span></div>
+    <div class="r"><b>branch</b><span>Tên di chuyển được, trỏ vào commit mới nhất của một dòng việc.</span></div>
+    <div class="r"><b>working tree</b><span>Thư mục file bạn đang sửa.</span></div>
+    <div class="r"><b>staging / index</b><span>Bản nháp commit kế tiếp, nạp bằng git add.</span></div>
+    <div class="r"><b>origin</b><span>Tên mặc định của server bạn clone về.</span></div>
+    <div class="r"><b>upstream</b><span>Nhánh trên server mà nhánh local đang theo dõi.</span></div>
+    <div class="r"><b>ahead / behind</b><span>Số commit bạn có mà server chưa có, và ngược lại.</span></div>
+    <div class="r"><b>fast-forward</b><span>Gộp chỉ bằng cách trượt con trỏ lên, không cần merge commit.</span></div>
+    <div class="r"><b>detached HEAD</b><span>HEAD trỏ thẳng vào commit, không qua branch.</span></div>
+    <div class="r"><b>tag</b><span>Con trỏ đứng yên, đánh dấu bản phát hành: v1.5.0.</span></div>
+  </div>
+  <aside class="notes">Hai slide tra cứu: in ra hoặc ghim lên kênh team. Lướt nhanh, hỏi khán giả xem thuật ngữ nào còn mơ hồ.</aside>
+</section>
+
+<section class="slide" data-sec="Tổng kết" data-title="Từ điển nhanh: công cụ">
+  <h2 class="t r">Từ điển nhanh: <span class="k">công cụ và quy trình</span></h2>
+  <div class="gl">
+    <div class="r"><b>merge</b><span>Gộp hai nhánh, giữ nguyên lịch sử, có thể thêm merge commit.</span></div>
+    <div class="r"><b>rebase</b><span>Chép commit của bạn lên đầu nhánh khác. Viết lại hash.</span></div>
+    <div class="r"><b>squash</b><span>Gộp nhiều commit thành một.</span></div>
+    <div class="r"><b>cherry-pick</b><span>Chép một commit cụ thể sang nhánh khác.</span></div>
+    <div class="r"><b>stash</b><span>Cất tạm thay đổi chưa commit để chuyển nhánh.</span></div>
+    <div class="r"><b>worktree</b><span>Thư mục làm việc thứ hai dùng chung một repo.</span></div>
+    <div class="r"><b>reflog</b><span>Nhật ký mọi lần HEAD di chuyển ở máy bạn. Dùng để cứu commit.</span></div>
+    <div class="r"><b>hook</b><span>Script Git tự chạy trước/sau commit, push. Lỗi thì chặn.</span></div>
+    <div class="r"><b>CI</b><span>Server tự build, test, quét cho mọi MR.</span></div>
+    <div class="r"><b>protected branch</b><span>Nhánh không ai push thẳng, chỉ merge qua MR.</span></div>
+    <div class="r"><b>MR / PR</b><span>Merge request (GitLab) = pull request (GitHub): xin gộp nhánh.</span></div>
+    <div class="r"><b>LFS</b><span>Kho riêng cho file lớn; repo chỉ giữ file con trỏ.</span></div>
+  </div>
+  <aside class="notes">Nửa sau từ điển: các công cụ và quy trình. Nếu ai còn thắc mắc một thuật ngữ, quay lại slide tương ứng bằng phím O (mục lục).</aside>
+</section>
+
+<section class="slide" data-sec="Tổng kết" data-title="Cheat sheet">
+  <h2 class="t r">Cheat sheet: tôi muốn… thì gõ gì</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 40px;font-size:27px">
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Bắt đầu task mới</span><code>git switch -c feat/…</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Cất việc đang dở</span><code>git stash push -u</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Xem mình đã sửa gì</span><code>git status · git diff</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Bỏ sửa một file</span><code>git restore &lt;file&gt;</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Chọn từng đoạn để commit</span><code>git add -p</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Huỷ commit chưa push</span><code>git reset --soft HEAD~1</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Sửa commit cuối (chưa push)</span><code>git commit --amend</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Huỷ commit đã push</span><code>git revert &lt;sha&gt;</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Cập nhật nhánh theo main</span><code>git rebase origin/main</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Tìm lại commit đã mất</span><code>git reflog</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Đẩy sau khi rebase</span><code>git push --force-with-lease</code></div>
+    <div class="hrow r" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:12px 0"><span>Tìm commit gây bug</span><code>git bisect start</code></div>
+  </div>
+  <aside class="notes">Slide để chụp lại hoặc ghim lên kênh team. Đi nhanh qua từng dòng; mỗi dòng ứng với một slide trước đó.</aside>
+</section>
+
+<section class="slide" data-sec="Tổng kết" data-title="Checklist trước khi push" data-steps="6">
+  <h2 class="t r">Checklist trước khi <span class="k">push</span></h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px 32px">
+    <div class="card hrow chk r" data-add="1:done" style="flex-direction:row;gap:24px"><span class="badge n"><svg><use href="#i-check"/></svg></span><div><h3 style="font-size:31px">git status sạch</h3><p>Không file lạ, không file quên add</p></div></div>
+    <div class="card hrow chk r" data-add="2:done" style="flex-direction:row;gap:24px"><span class="badge n"><svg><use href="#i-check"/></svg></span><div><h3 style="font-size:31px">Đã đọc git diff --staged</h3><p>Không console.log, code thừa</p></div></div>
+    <div class="card hrow chk r" data-add="3:done" style="flex-direction:row;gap:24px"><span class="badge n"><svg><use href="#i-check"/></svg></span><div><h3 style="font-size:31px">Message đúng chuẩn</h3><p>type(scope): …, có mã ticket</p></div></div>
+    <div class="card hrow chk r" data-add="4:done" style="flex-direction:row;gap:24px"><span class="badge n"><svg><use href="#i-check"/></svg></span><div><h3 style="font-size:31px">Build + test pass ở máy</h3><p>Đừng để CI phát hiện thứ mình chạy được</p></div></div>
+    <div class="card hrow chk r" data-add="5:done" style="flex-direction:row;gap:24px"><span class="badge n"><svg><use href="#i-check"/></svg></span><div><h3 style="font-size:31px">Đã rebase main mới nhất</h3><p>Giải conflict ở máy mình, không ở MR</p></div></div>
+    <div class="card hrow chk r" data-add="6:done" style="flex-direction:row;gap:24px"><span class="badge n"><svg><use href="#i-check"/></svg></span><div><h3 style="font-size:31px">Không secret, không file lớn</h3><p>.env, key, build output, binary</p></div></div>
+  </div>
+  <aside class="notes">Sáu câu hỏi tự kiểm, mất chưa tới một phút. Bấm để tick từng ô. Nếu team dùng hook và CI, phần lớn checklist được máy kiểm; phần còn lại (đọc lại diff, message nói vì sao) là việc của con người.</aside>
+</section>
+
+<section class="slide" data-sec="Tổng kết" data-tr="zoom" data-title="Thực hành" style="justify-content:center">
+  <canvas id="endfx" width="1920" height="1080" style="position:absolute;inset:0;opacity:.6;-webkit-mask-image:linear-gradient(90deg,transparent 0%,transparent 50%,#000 85%);mask-image:linear-gradient(90deg,transparent 0%,transparent 50%,#000 85%)"></canvas>
+  <p class="eyebrow r">Bài tập · repo luyện tập</p>
+  <h1 class="r" style="font-size:150px;font-weight:800;line-height:.95">Thực hành <span style="color:var(--git)">ngay</span></h1>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px 48px;max-width:1500px;margin-top:20px;font-size:31px">
+    <div class="hrow r"><span class="badge">1</span><p>Tạo conflict giữa hai nhánh rồi giải</p></div>
+    <div class="hrow r"><span class="badge">2</span><p><code>reset --hard</code> mất 3 commit, cứu bằng reflog</p></div>
+    <div class="hrow r"><span class="badge">3</span><p>Gộp 5 commit lộn xộn thành 2 bằng <code>rebase -i</code></p></div>
+    <div class="hrow r"><span class="badge">4</span><p>Dùng bisect tìm commit gây bug cài sẵn</p></div>
+  </div>
+  <p class="r mono mute" style="font-size:24px;margin-top:36px">Đọc thêm: git-scm.com/book · learngitbranching.js.org · ohshitgit.com</p>
+  <aside class="notes">Git chỉ thành phản xạ khi đã tự làm hỏng và tự cứu ít nhất một lần. Chuẩn bị sẵn một repo luyện tập có nhánh conflict và một bug cài sẵn cho bài bisect. Learn Git Branching là trò chơi trực quan tốt cho người mới; ohshitgit.com là bản tra cứu "tôi lỡ làm X". Mở phần hỏi đáp.</aside>
+</section>
+
+<div id="hud"><span class="sec"></span><div class="track"><div class="fill"></div></div><div class="dots"></div><span class="num"></span></div>
+</div></div>
+
+<div id="ctl">
+  <button id="bPrev" aria-label="Slide trước">←</button>
+  <button id="bNext" aria-label="Bước tiếp">→</button>
+  <button id="bNotes">Ghi chú (N)</button>
+  <button id="bOv">Mục lục (O)</button>
+  <button id="bFs">Toàn màn hình (F)</button>
+</div>
+<div id="notes" hidden><div class="meta"><span class="where"></span><span class="timer">00:00</span><span class="next"></span></div><div class="txt"></div></div>
+<div id="ov" hidden><div class="wrap"><div class="top"><p>Bấm một slide để nhảy tới. Esc để đóng.</p><button class="close" id="ovClose">Đóng</button></div><div id="ovList" class="wrap" style="gap:24px"></div></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>
+(() => {
+"use strict";
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (REDUCED) gsap.globalTimeline.timeScale(40);
+const COL = { w: "#e9edf1", o: "#f05033", b: "#59a8ff", g: "#45c46f", r: "#ff6161", a: "#f3bb4f", v: "#ab90ff", m: "#3d4856", ink: "#0c0f13", mute: "#95a2b1", panel: "#1d242e", line: "#2b3440" };
+const NS = "http://www.w3.org/2000/svg";
+const $ = (q, el = document) => el.querySelector(q);
+const $$ = (q, el = document) => [...el.querySelectorAll(q)];
+function mk(tag, attrs, parent) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; }
+
+/* ================= Graph: declarative commit-graph renderer =================
+   set(state) animates nodes, edges and ref pills from wherever they are to the new state. */
+let markerSeq = 0;
+class Graph {
+  constructor(svg) {
+    this.svg = svg; svg.innerHTML = "";
+    this.defs = mk("defs", {}, svg); this.gE = mk("g", {}, svg); this.gN = mk("g", {}, svg); this.gR = mk("g", {}, svg);
+    this.N = {}; this.E = {}; this.R = {}; this.mk = {};
+  }
+  marker(c) {
+    if (this.mk[c]) return this.mk[c];
+    const id = "arw" + (++markerSeq);
+    const m = mk("marker", { id, viewBox: "0 0 10 10", refX: "7", refY: "5", markerWidth: "4", markerHeight: "4", orient: "auto-start-reverse" }, this.defs);
+    mk("path", { d: "M0 0 L10 5 L0 10 z", fill: c }, m);
+    return (this.mk[c] = `url(#${id})`);
+  }
+  set(st, instant) {
+    const D = instant ? 0 : 0.85, EASE = "power3.inOut";
+    const go = (el, v) => instant ? gsap.set(el, v) : gsap.to(el, { duration: D, ease: EASE, overwrite: "auto", ...v });
+    const nodes = st.nodes || {}, edges = st.edges || {}, refs = st.refs || {};
+    // ---- nodes
+    for (const id in nodes) {
+      const s = { r: 28, fill: COL.w, tc: COL.ink, op: 1, label: id, fs: 22, ...nodes[id] };
+      let o = this.N[id];
+      const fresh = !o;
+      if (fresh) {
+        o = this.N[id] = {}; o.g = mk("g", { class: "gn" }, this.gN);
+        o.c = mk("circle", { r: s.r, cx: 0, cy: 0 }, o.g);
+        o.t = mk("text", { x: 0, y: 1, "text-anchor": "middle", "dominant-baseline": "central" }, o.g);
+        o.t.textContent = s.label; o.label = s.label; o.hidden = true;
+        gsap.set(o.g, { x: s.x, y: s.y, opacity: 0, scale: 0.3, transformOrigin: "50% 50%" });
+      }
+      const reveal = o.hidden;
+      if (reveal && s.from) gsap.set(o.g, { x: s.from[0], y: s.from[1], scale: 1 });
+      o.hidden = false; o.x = s.x; o.y = s.y;
+      o.g.classList.toggle("ghost", !!s.ghost);
+      const v = { x: s.x, y: s.y, opacity: s.ghost ? 0.45 : s.op, scale: s.scale || 1 };
+      if (!instant && reveal && !s.from) gsap.to(o.g, { ...v, duration: D, ease: "back.out(1.7)", overwrite: "auto" });
+      else go(o.g, v);
+      go(o.c, { attr: { r: s.r }, fill: s.ghost ? COL.ink : s.fill, stroke: s.ring || (s.ghost ? s.fill : s.fill), strokeWidth: s.ring ? 7 : (s.ghost ? 3 : 0) });
+      go(o.t, { fill: s.ghost ? s.fill : s.tc, fontSize: s.fs });
+      if (s.label !== o.label) {
+        o.label = s.label;
+        if (instant) o.t.textContent = s.label;
+        else gsap.to(o.t, { opacity: 0, duration: D / 3, onComplete: () => { o.t.textContent = s.label; gsap.to(o.t, { opacity: 1, duration: D / 3 }); } });
+      }
+    }
+    for (const id in this.N) if (!nodes[id] && !this.N[id].hidden) { this.N[id].hidden = true; go(this.N[id].g, { opacity: 0, scale: 0.4 }); }
+    // ---- edges (endpoints follow node targets)
+    const pos = (id) => nodes[id] ? [nodes[id].x, nodes[id].y] : this.N[id] ? [this.N[id].x, this.N[id].y] : [0, 0];
+    for (const id in edges) {
+      const s = { c: COL.line, w: 5, op: 1, ...edges[id] };
+      const [x1, y1] = s.a || pos(s.from), [x2, y2] = s.b || pos(s.to);
+      const mx = (x1 + x2) / 2;
+      const d = s.straight ? `M${x1} ${y1} C${x1} ${y1} ${x2} ${y2} ${x2} ${y2}` : `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
+      let o = this.E[id];
+      if (!o) { o = this.E[id] = { p: mk("path", { fill: "none", "stroke-linecap": "round" }, this.gE), hidden: true }; }
+      o.p.setAttribute("marker-end", s.arrow ? this.marker(s.c) : "");
+      if (o.hidden) {
+        o.hidden = false;
+        o.p.setAttribute("d", d);
+        gsap.set(o.p, { stroke: s.c, strokeWidth: s.w, opacity: s.op });
+        if (instant || s.arrow) gsap.set(o.p, { strokeDasharray: s.dash || "none", strokeDashoffset: 0, opacity: instant ? s.op : 0 });
+        if (!instant && s.arrow) gsap.to(o.p, { opacity: s.op, duration: D * 0.6, delay: D * 0.4 });
+        if (!instant && !s.arrow) {
+          const L = o.p.getTotalLength() || 1;
+          gsap.fromTo(o.p, { strokeDasharray: L, strokeDashoffset: L }, { strokeDashoffset: 0, duration: D, delay: D * 0.25, ease: "power2.inOut", overwrite: "auto", onComplete: () => gsap.set(o.p, { strokeDasharray: s.dash || "none" }) });
+        }
+      } else {
+        gsap.set(o.p, { strokeDasharray: s.dash || "none", strokeDashoffset: 0 });
+        go(o.p, { attr: { d }, stroke: s.c, strokeWidth: s.w, opacity: s.op });
+      }
+    }
+    for (const id in this.E) if (!edges[id] && !this.E[id].hidden) { this.E[id].hidden = true; go(this.E[id].p, { opacity: 0 }); }
+    // ---- ref pills / labels / boxes
+    for (const id in refs) {
+      const s = { fill: COL.panel, tc: COL.w, fs: 22, h: 46, op: 1, ...refs[id] };
+      const w = s.w || Math.round(s.text.length * s.fs * 0.6 + 36);
+      let o = this.R[id];
+      if (!o) {
+        o = this.R[id] = { g: mk("g", {}, this.gR), hidden: true };
+        o.rect = mk("rect", { rx: 12, ry: 12 }, o.g);
+        o.t = mk("text", { "dominant-baseline": "central", "font-weight": s.weight || 700 }, o.g);
+        o.t.textContent = s.text; o.text = s.text;
+        gsap.set(o.g, { x: s.x, y: s.y, opacity: 0 });
+      }
+      const reveal = o.hidden;
+      if (reveal && s.from) gsap.set(o.g, { x: s.from[0], y: s.from[1] });
+      o.hidden = false;
+      const plain = !!s.plain;
+      const tx = plain ? 0 : (s.ty === "top" ? -w / 2 + 24 : 0);
+      o.t.setAttribute("text-anchor", plain || s.ty === "top" ? "start" : "middle");
+      go(o.rect, { attr: { x: -w / 2, y: -s.h / 2, width: w, height: s.h }, fill: plain ? "rgba(0,0,0,0)" : s.fill, stroke: s.stroke || "rgba(0,0,0,0)", strokeWidth: s.stroke ? 2 : 0 });
+      go(o.t, { attr: { x: tx, y: s.ty === "top" ? -s.h / 2 + 30 : 1 }, fill: s.tc, fontSize: s.fs });
+      if (!instant && reveal) gsap.to(o.g, { x: s.x, y: s.y, opacity: s.op, duration: D, ease: s.from ? "bounce.out" : "back.out(1.6)", overwrite: "auto" });
+      else go(o.g, { x: s.x, y: s.y, opacity: s.op });
+      if (s.text !== o.text) {
+        o.text = s.text;
+        if (instant) o.t.textContent = s.text;
+        else gsap.to(o.t, { opacity: 0, duration: D / 3, onComplete: () => { o.t.textContent = s.text; gsap.to(o.t, { opacity: 1, duration: D / 3 }); } });
+      }
+    }
+    for (const id in this.R) if (!refs[id] && !this.R[id].hidden) { this.R[id].hidden = true; go(this.R[id].g, { opacity: 0 }); }
+  }
+}
+const graphOf = (slide, sel) => slide[sel] || (slide[sel] = new Graph($(sel, slide)));
+const edgesOf = (pairs, c, extra = {}) => Object.fromEntries(pairs.map(([a, b]) => [a + b, { from: a, to: b, c, ...extra }]));
+const pill = (x, y, text, fill = COL.panel, tc = COL.w, extra = {}) => ({ x, y, text, fill, tc, ...extra });
+
+/* ================= scenes ================= */
+const SCENES = {};
+
+SCENES.roadmap = (s, k, dir, instant) => {
+  if (!s._rm) s._rm = $("#road", s).parentNode;
+  const host = s._rm;
+  if (!host._init) {
+    host._init = true;
+    const items = [["Mô hình tư duy", "Snapshot, bốn vùng, branch là con trỏ"], ["Lệnh hằng ngày", "Vòng làm việc, merge hay rebase"], ["Quy ước team", "Commit, message, tên nhánh, MR"], ["Tình huống thực tế", "Amend, reset, conflict, reflog, bisect"], ["An toàn & sự cố", "Điều cấm, lộ secret, hook & CI"]];
+    host.innerHTML = `<div class="rm-track" style="position:absolute;left:150px;right:150px;top:118px;height:6px;background:var(--line);border-radius:6px"></div><div class="rm-fill" style="position:absolute;left:150px;top:118px;height:6px;width:0;background:var(--git);border-radius:6px"></div>` +
+      items.map(([t, d], i) => `<div class="rm-it" style="position:absolute;left:${150 + i * 341 - 150}px;top:40px;width:300px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px">
+        <div class="rm-n" style="width:160px;height:160px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:64px;background:var(--panel2);border:3px solid var(--line);color:var(--mute)">0${i + 1}</div>
+        <h3 style="font-size:36px;font-weight:700">${t}</h3><p style="font-size:26px;color:var(--mute);line-height:1.4">${d}</p></div>`).join("");
+  }
+  const its = $$(".rm-it", host);
+  its.forEach((el, i) => {
+    const on = i <= k, cur = i === k;
+    const n = $(".rm-n", el);
+    const v = { opacity: on ? 1 : 0.18, y: on ? 0 : 20 };
+    const nv = { backgroundColor: cur ? COL.o : on ? COL.w : COL.panel, color: cur || on ? COL.ink : COL.mute, borderColor: cur ? COL.o : on ? COL.w : COL.line, scale: cur ? 1.08 : 1 };
+    if (instant) { gsap.set(el, v); gsap.set(n, nv); } else { gsap.to(el, { ...v, duration: 0.6, ease: "power3.out" }); gsap.to(n, { ...nv, duration: 0.6, ease: "back.out(1.8)" }); }
+  });
+  const w = Math.min(k, 4) * 341;
+  instant ? gsap.set($(".rm-fill", host), { width: w }) : gsap.to($(".rm-fill", host), { width: w, duration: 0.8, ease: "power3.inOut" });
+};
+
+function scramble(el, target, instant) {
+  if (el._scr) clearInterval(el._scr);
+  if (instant) { el.textContent = target; return; }
+  let n = 0; const hex = "0123456789abcdef";
+  el._scr = setInterval(() => {
+    n++;
+    el.textContent = target.split("").map((ch, i) => (i < n / 2 ? ch : hex[Math.floor(Math.random() * 16)])).join("");
+    if (n >= target.length * 2) { clearInterval(el._scr); el.textContent = target; }
+  }, 45);
+}
+SCENES.snapshot = (s, k, dir, instant) => {
+  const changed = k >= 2;
+  const msg = $("#snapMsg", s), hash = $("#snapHash", s);
+  const want = changed ? "3b71c0a" : "9f8e7d6";
+  if (hash.dataset.v !== want) {
+    hash.dataset.v = want;
+    msg.innerHTML = changed ? 'feat(cart): add coupon<b style="color:var(--git);background:rgba(240,80,51,.2);padding:0 4px;border-radius:4px">s</b>' : "feat(cart): add coupon";
+    scramble(hash, want, instant);
+    if (!instant) gsap.fromTo(hash, { color: COL.a }, { color: COL.o, duration: 1.2 });
+  }
+};
+
+SCENES.zones = (s, k, dir, instant) => {
+  const host = $("#zones", s);
+  const W = 356, GAP = 80, TOP = 64, H = 200;
+  if (!host._init) {
+    host._init = true; host.style.height = "400px";
+    const z = [["Working directory", "File bạn đang sửa"], ["Staging area", "Bản nháp commit kế tiếp"], ["Local repository", "Lịch sử trong .git"], ["Remote (origin)", "GitLab/GitHub, dùng chung"]];
+    const arrow = (flip) => `<svg width="70" height="22" style="${flip ? "transform:scaleX(-1)" : ""}"><line x1="2" y1="11" x2="56" y2="11" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M52 2 L68 11 L52 20z" fill="currentColor"/></svg>`;
+    host.innerHTML = z.map(([t, d], i) => `<div class="zn" style="position:absolute;left:${i * (W + GAP)}px;top:${TOP}px;width:${W}px;height:${H}px;border-radius:22px;border:2px solid var(--line);background:var(--panel);padding:26px 28px"><h3 style="font-size:34px">${t}</h3><p style="font-size:24px;color:var(--mute);margin-top:6px">${d}</p></div>`).join("") +
+      ["git add", "git commit", "git push"].map((c, i) => `<div class="zf" style="position:absolute;left:${(i + 1) * (W + GAP) - GAP / 2 - 130}px;top:0;width:260px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--mute);font-family:var(--mono);font-size:24px;font-weight:700"><span>${c}</span>${arrow(false)}</div>`).join("") +
+      ["git restore", "git restore --staged", "git fetch / pull"].map((c, i) => `<div class="zb" style="position:absolute;left:${(i + 1) * (W + GAP) - GAP / 2 - 160}px;top:${TOP + H + 40}px;width:320px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--blue);font-family:var(--mono);font-size:23px;font-weight:700;opacity:0">${arrow(true)}<span>${c}</span></div>`).join("") +
+      `<div class="zchip" style="position:absolute;left:0;top:${TOP + H - 84}px;width:250px;height:58px;border-radius:999px;display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:25px;color:var(--ink);box-shadow:0 12px 30px rgba(0,0,0,.45)">login.ts</div>`;
+  }
+  const chips = [["login.ts  M", COL.r], ["login.ts  +", COL.g], ["9f8e7d6", COL.b], ["9f8e7d6", COL.o], ["9f8e7d6", COL.o]];
+  const zi = Math.min(k, 3);
+  $$(".zn", host).forEach((el, i) => {
+    const act = k < 4 ? i === k : i === 3;
+    const v = { borderColor: act ? COL.o : COL.line, backgroundColor: act ? "#2a1a16" : COL.panel, scale: act ? 1.04 : 1 };
+    instant ? gsap.set(el, v) : gsap.to(el, { ...v, duration: 0.6, ease: "power3.out" });
+  });
+  $$(".zf", host).forEach((el, i) => {
+    const on = k === i + 1;
+    const v = { color: on ? COL.o : COL.mute, scale: on ? 1.25 : 1 };
+    instant ? gsap.set(el, v) : gsap.to(el, { ...v, duration: 0.5, ease: "back.out(2)" });
+  });
+  $$(".zb", host).forEach((el, i) => {
+    const v = { opacity: k === 4 ? 1 : 0, y: k === 4 ? 0 : -10 };
+    instant ? gsap.set(el, v) : gsap.to(el, { ...v, duration: 0.5, delay: k === 4 ? i * 0.12 : 0 });
+  });
+  const chip = $(".zchip", host);
+  const tx = zi * (W + GAP) + (W - 250) / 2;
+  const [txt, col] = chips[k];
+  if (instant || chip._x === undefined) { gsap.set(chip, { x: tx, y: 0, backgroundColor: col }); chip.textContent = txt; }
+  else if (chip._x !== tx) {
+    const tl = gsap.timeline();
+    tl.to(chip, { x: tx, duration: 0.9, ease: "power2.inOut" }, 0)
+      .to(chip, { y: -150, duration: 0.45, ease: "power2.out" }, 0)
+      .to(chip, { y: 0, duration: 0.45, ease: "bounce.out" }, 0.45)
+      .to(chip, { backgroundColor: col, duration: 0.3 }, 0.4)
+      .add(() => { chip.textContent = txt; }, 0.45)
+      .fromTo(chip, { scale: 1 }, { scale: 1.15, duration: 0.15, yoyo: true, repeat: 1 }, 0.9);
+  } else { chip.textContent = txt; gsap.to(chip, { backgroundColor: col, duration: 0.3 }); }
+  chip._x = tx;
+};
+
+SCENES.pointer = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gPointer");
+  const y1 = 150, y2 = 340, X = { A: 80, B: 260, C: 440, D: 620, G: 800 };
+  const nodes = { A: { x: X.A, y: y1 }, B: { x: X.B, y: y1 }, C: { x: X.C, y: y1 }, D: { x: X.D, y: y1 }, E: { x: X.C, y: y2, fill: COL.o }, F: { x: X.D, y: y2, fill: COL.o } };
+  const edges = { ...edgesOf([["A", "B"], ["B", "C"], ["C", "D"]], COL.mute), ...edgesOf([["B", "E"], ["E", "F"]], COL.o) };
+  const tip = k >= 1 ? X.G : X.D;
+  if (k >= 1) { nodes.G = { x: X.G, y: y2, fill: COL.v }; edges.FG = { from: "F", to: "G", c: COL.o }; }
+  const refs = { main: pill(X.D, 60, "main", COL.w, COL.ink), feat: pill(tip, 432, "feat/login", COL.o, COL.ink) };
+  if (k <= 1) { refs.head = pill(tip + 200, 432, "HEAD", COL.panel, COL.w, { stroke: COL.w }); edges.ha = { a: [tip + 152, 432], b: [tip + 96, 432], c: COL.w, w: 3, arrow: true, straight: true }; }
+  else if (k === 2) { refs.head = pill(X.D + 160, 60, "HEAD", COL.panel, COL.w, { stroke: COL.w }); edges.ha = { a: [X.D + 112, 60], b: [X.D + 56, 60], c: COL.w, w: 3, arrow: true, straight: true }; }
+  else { refs.head = pill(X.C, 60, "HEAD", COL.r, COL.ink); edges.ha = { a: [X.C, 86], b: [X.C, 114], c: COL.r, w: 3, arrow: true, straight: true }; nodes.C.ring = COL.r; }
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.fetch = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gFetch");
+  const yR = 150, yL = 420, X = [160, 340, 520, 700];
+  const nodes = { rA: { x: X[0], y: yR, label: "A" }, rB: { x: X[1], y: yR, label: "B" }, rC: { x: X[2], y: yR, label: "C", fill: COL.b }, rD: { x: X[3], y: yR, label: "D", fill: COL.b }, lA: { x: X[0], y: yL, label: "A" }, lB: { x: X[1], y: yL, label: "B" } };
+  const edges = { ...edgesOf([["rA", "rB"], ["lA", "lB"]], COL.mute), ...edgesOf([["rB", "rC"], ["rC", "rD"]], COL.b) };
+  const refs = { lr: { x: 30, y: 62, text: "origin · server", plain: true, tc: COL.mute, fs: 24, weight: 600 }, ll: { x: 30, y: 330, text: "máy bạn", plain: true, tc: COL.mute, fs: 24, weight: 600 }, srv: pill(X[3], 80, "main", COL.b, COL.ink) };
+  if (k >= 1) {
+    nodes.lC = { x: X[2], y: yL, label: "C", fill: COL.b, from: [X[2], yR] }; nodes.lD = { x: X[3], y: yL, label: "D", fill: COL.b, from: [X[3], yR] };
+    Object.assign(edges, edgesOf([["lB", "lC"], ["lC", "lD"]], COL.b));
+  }
+  refs.om = pill(k >= 1 ? X[3] : X[1], 340, "origin/main", COL.panel, COL.b, { stroke: COL.b });
+  refs.lm = pill(k >= 2 ? X[3] : X[1], 500, "main", COL.w, COL.ink);
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.workflow = (s, k, dir, instant) => {
+  const host = $("#wf", s);
+  const cx = (i) => 120 + i * 237;
+  if (!host._init) {
+    host._init = true;
+    const names = ["Cập nhật main", "Tạo nhánh", "Code + xem lại", "Chọn thay đổi", "Commit", "Đẩy lên", "MR + merge"];
+    host.innerHTML = `<div style="position:absolute;left:${cx(0)}px;width:${cx(6) - cx(0)}px;top:68px;height:6px;background:var(--line);border-radius:6px"></div><div class="wf-fill" style="position:absolute;left:${cx(0)}px;width:0;top:68px;height:6px;background:var(--green);border-radius:6px"></div>` +
+      names.map((n, i) => `<div class="wf-st" style="position:absolute;left:${cx(i) - 120}px;top:0;width:240px;display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center"><div class="wf-n" style="width:140px;height:140px;border-radius:50%;display:grid;place-items:center;font-family:var(--display);font-weight:800;font-size:52px;background:var(--panel2);border:3px solid var(--line);color:var(--mute)">${i + 1}</div><h3 style="font-size:30px">${n}</h3></div>`).join("") +
+      `<div class="wf-cur" style="position:absolute;left:${cx(0) - 86}px;top:-16px;width:172px;height:172px;border-radius:50%;border:4px solid var(--git);box-shadow:0 0 40px rgba(240,80,51,.55);opacity:0"></div>`;
+  }
+  $$(".wf-n", host).forEach((n, i) => {
+    const done = i < k - 1, cur = i === k - 1;
+    const v = { backgroundColor: cur ? COL.o : done ? COL.g : COL.panel, color: cur || done ? COL.ink : COL.mute, borderColor: cur ? COL.o : done ? COL.g : COL.line };
+    instant ? gsap.set(n, v) : gsap.to(n, { ...v, duration: 0.4 });
+  });
+  const cur = $(".wf-cur", host);
+  const v = { x: cx(Math.max(k - 1, 0)) - cx(0), opacity: k >= 1 ? 1 : 0 };
+  instant ? gsap.set(cur, v) : gsap.to(cur, { ...v, duration: 0.7, ease: "power3.inOut" });
+  const fw = Math.max(k - 1, 0) * 237;
+  instant ? gsap.set($(".wf-fill", host), { width: fw }) : gsap.to($(".wf-fill", host), { width: fw, duration: 0.7, ease: "power3.inOut" });
+};
+
+SCENES.mergeRebase = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gMR");
+  const y1 = 140, y2 = 310, X = { A: 140, B: 380, C: 620, D: 860, M: 1100, E2: 1100, F2: 1340 };
+  const nodes = { A: { x: X.A, y: y1 }, B: { x: X.B, y: y1 }, C: { x: X.C, y: y1, fill: COL.b }, D: { x: X.D, y: y1, fill: COL.b } };
+  const edges = edgesOf([["A", "B"], ["B", "C"], ["C", "D"]], COL.mute);
+  const refs = {};
+  if (k <= 2) {
+    nodes.E = { x: X.C, y: y2, fill: COL.o }; nodes.F = { x: X.D, y: y2, fill: COL.o };
+    edges.xE = { from: "B", to: "E", c: COL.o }; edges.EF = { from: "E", to: "F", c: COL.o };
+    refs.feat = pill(X.D, 392, "feat/login", COL.o, COL.ink);
+    refs.main = pill(k === 1 ? X.M : X.D, 52, "main", COL.w, COL.ink);
+    if (k === 1) { nodes.M = { x: X.M, y: y1, fill: COL.b, label: "M", ring: COL.w }; edges.DM = { from: "D", to: "M", c: COL.mute }; edges.FM = { from: "F", to: "M", c: COL.o }; }
+  } else {
+    nodes.E = { x: X.E2, y: y1, fill: COL.o, label: "E′" }; nodes.F = { x: X.F2, y: y1, fill: COL.o, label: "F′" };
+    edges.xE = { from: "D", to: "E", c: COL.o }; edges.EF = { from: "E", to: "F", c: COL.o };
+    if (k === 3) { nodes.gE = { x: X.C, y: y2, fill: COL.o, label: "E", ghost: true }; nodes.gF = { x: X.D, y: y2, fill: COL.o, label: "F", ghost: true }; edges.gBE = { from: "B", to: "gE", c: COL.o, op: 0.35, dash: "8 10" }; edges.gEF = { from: "gE", to: "gF", c: COL.o, op: 0.35, dash: "8 10" }; }
+    refs.feat = pill(X.F2, 232, "feat/login", COL.o, COL.ink);
+    refs.main = pill(k === 4 ? X.F2 : X.D, 52, "main", COL.w, COL.ink);
+  }
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.trunk = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gTrunk");
+  const y = 150, yb = 320, mx = [100, 360, 620, 880, 1140];
+  const nodes = { m0: { x: mx[0], y, label: "" }, m1: { x: mx[1], y, label: "" }, m2: { x: mx[2], y, label: "" } };
+  const edges = edgesOf([["m0", "m1"], ["m1", "m2"]], COL.mute);
+  const refs = {};
+  let tip = mx[2];
+  if (k >= 1) {
+    Object.assign(nodes, { f1: { x: 470, y: yb, fill: COL.o, label: "" }, f2: { x: 680, y: yb, fill: COL.o, label: "" }, m3: { x: mx[3], y, label: "" } });
+    Object.assign(edges, edgesOf([["m1", "f1"], ["f1", "f2"], ["f2", "m3"]], COL.o), edgesOf([["m2", "m3"]], COL.mute));
+    refs.feat = pill(575, 398, "feat/GAV-12", COL.panel, COL.o, { stroke: COL.o });
+    if (k === 1) refs.mr = pill(820, 398, "MR ✓ CI xanh", COL.g, COL.ink);
+    tip = mx[3];
+  }
+  if (k >= 2) {
+    Object.assign(nodes, { g1: { x: 1010, y: yb, fill: COL.b, label: "" }, m4: { x: mx[4], y, label: "" } });
+    Object.assign(edges, edgesOf([["m3", "g1"], ["g1", "m4"]], COL.b), edgesOf([["m3", "m4"]], COL.mute));
+    refs.fix = pill(1010, 398, "fix/GAV-20", COL.panel, COL.b, { stroke: COL.b });
+    tip = mx[4];
+  }
+  if (k >= 3) { refs.tag = pill(1330, y, "v1.4.0", COL.a, COL.ink, { from: [1330, -60] }); edges.tg = { a: [mx[4] + 34, y], b: [1262, y], c: COL.a, w: 3, dash: "6 8", straight: true }; nodes.m4.ring = COL.a; }
+  refs.main = pill(tip, 62, "main", COL.w, COL.ink);
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.amend = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gAmend");
+  const y = 140, X = [120, 360, 600];
+  const nodes = { A: { x: X[0], y }, B: { x: X[1], y } };
+  const edges = edgesOf([["A", "B"]], COL.mute);
+  const refs = {};
+  if (k === 0) { nodes.C = { x: X[2], y }; edges.BC = { from: "B", to: "C", c: COL.mute }; refs.main = pill(X[2], 52, "main", COL.w, COL.ink); }
+  else {
+    nodes.C = { x: X[2], y: 280, ghost: true, fill: COL.mute }; nodes.C2 = { x: X[2], y, fill: COL.v, label: "C′", from: [X[2], 280] };
+    edges.BC = { from: "B", to: "C", c: COL.mute, op: 0.35, dash: "8 10" }; edges.BC2 = { from: "B", to: "C2", c: COL.v };
+    refs.main = pill(X[2], 52, "main", COL.w, COL.ink);
+    refs.old = { x: X[2] + 56, y: 280, text: "C cũ: không còn ai trỏ tới", plain: true, tc: COL.mute, fs: 22, weight: 500 };
+  }
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.reset = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gReset");
+  const y = 180, X = { A: 160, B: 400, C: 640, R: 880 };
+  const nodes = { A: { x: X.A, y }, B: { x: X.B, y }, C: { x: X.C, y, ghost: k >= 1 && k <= 3, fill: k >= 1 && k <= 3 ? COL.mute : COL.w } };
+  const edges = { ...edgesOf([["A", "B"]], COL.mute), BC: { from: "B", to: "C", c: COL.mute, op: k >= 1 && k <= 3 ? 0.35 : 1, dash: k >= 1 && k <= 3 ? "8 10" : "" } };
+  const refs = {
+    stg: { x: 1420, y: 110, w: 400, h: 120, text: "Staging", ty: "top", fill: COL.panel, tc: COL.mute, stroke: COL.line, fs: 22 },
+    wd: { x: 1420, y: 270, w: 400, h: 120, text: "Working directory", ty: "top", fill: COL.panel, tc: COL.mute, stroke: COL.line, fs: 22 },
+  };
+  let tipX = X.C;
+  if (k >= 1 && k <= 3) tipX = X.B;
+  if (k === 1) refs.chg = pill(1420, 132, "thay đổi của C", COL.g, COL.ink);
+  if (k === 2) refs.chg = pill(1420, 292, "thay đổi của C", COL.a, COL.ink);
+  if (k === 3) { refs.lost = pill(1420, 292, "✕ thay đổi đã mất", COL.panel, COL.r, { stroke: COL.r }); refs.rl = { x: X.C, y: 262, text: "vẫn có trong reflog", tc: COL.mute, fill: COL.panel, fs: 20 }; }
+  if (k === 4) { nodes.R = { x: X.R, y, fill: COL.v, label: "R" }; edges.CR = { from: "C", to: "R", c: COL.v }; refs.rv = pill(X.R, 262, "Revert \"C\"", COL.panel, COL.v, { stroke: COL.v }); refs.om = pill(X.C, 262, "đã push", COL.panel, COL.mute); tipX = X.R; }
+  refs.main = pill(tipX, 92, "main", COL.w, COL.ink);
+  refs.head = pill(tipX + 150, 92, "HEAD", COL.panel, COL.w, { stroke: COL.w });
+  edges.ha = { a: [tipX + 104, 92], b: [tipX + 52, 92], c: COL.w, w: 3, arrow: true, straight: true };
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.wrongBranch = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gWrong");
+  const y1 = 170, y2 = 350, X = { A: 160, B: 420, X: 680, Y: 940 };
+  const moved = k >= 2;
+  const nodes = { A: { x: X.A, y: y1 }, B: { x: X.B, y: y1 }, X: { x: X.X, y: moved ? y2 : y1, fill: moved ? COL.o : COL.w }, Y: { x: X.Y, y: moved ? y2 : y1, fill: moved ? COL.o : COL.w } };
+  const edges = { ...edgesOf([["A", "B"]], COL.mute), BX: { from: "B", to: "X", c: moved ? COL.o : COL.mute }, XY: { from: "X", to: "Y", c: moved ? COL.o : COL.mute } };
+  const refs = { om: pill(X.B, 82, "origin/main", COL.panel, COL.b, { stroke: COL.b }) };
+  const mainAt = moved ? [X.B, 22] : [X.Y, 82];
+  refs.main = pill(mainAt[0], mainAt[1], "main", COL.w, COL.ink);
+  if (k >= 1) refs.feat = pill(X.Y, moved ? 440 : 262, "feat/GAV-123-x", COL.o, COL.ink);
+  if (k === 3) { refs.head = pill(X.Y + 200, 440, "HEAD", COL.panel, COL.w, { stroke: COL.w }); edges.ha = { a: [X.Y + 152, 440], b: [X.Y + 116, 440], c: COL.w, w: 3, arrow: true, straight: true }; }
+  else { refs.head = pill(mainAt[0] + 150, mainAt[1], "HEAD", COL.panel, COL.w, { stroke: COL.w }); edges.ha = { a: [mainAt[0] + 104, mainAt[1]], b: [mainAt[0] + 52, mainAt[1]], c: COL.w, w: 3, arrow: true, straight: true }; }
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.lease = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gLease");
+  const yS = 150, yL = 430, X = [160, 340, 520, 700];
+  const nodes = { sA: { x: X[0], y: yS, label: "A" }, sB: { x: X[1], y: yS, label: "B" }, lA: { x: X[0], y: yL, label: "A" }, lB: { x: X[1], y: yL, label: "B" }, lE: { x: X[2], y: yL, label: "E′", fill: COL.o }, lF: { x: X[3], y: yL, label: "F′", fill: COL.o } };
+  const edges = { ...edgesOf([["sA", "sB"], ["lA", "lB"]], COL.mute), ...edgesOf([["lB", "lE"], ["lE", "lF"]], COL.o) };
+  const refs = { ls: { x: 30, y: 60, text: "server · feat/login", plain: true, tc: COL.mute, fs: 24, weight: 600 }, ll: { x: 30, y: 300, text: "máy bạn (vừa rebase)", plain: true, tc: COL.mute, fs: 24, weight: 600 }, loc: pill(X[3], 510, "feat/login", COL.o, COL.ink), lf: pill(X[1], 362, "lần fetch cuối", COL.panel, COL.mute) };
+  if (k === 1) {
+    nodes.sT = { x: X[2], y: 262, label: "T", fill: COL.r, ghost: true };
+    nodes.sE = { x: X[2], y: yS, label: "E′", fill: COL.o, from: [X[2], yL] }; nodes.sF = { x: X[3], y: yS, label: "F′", fill: COL.o, from: [X[3], yL] };
+    Object.assign(edges, edgesOf([["sB", "sE"], ["sE", "sF"]], COL.o));
+    refs.srv = pill(X[3], 80, "feat/login", COL.o, COL.ink);
+    refs.lost = pill(X[2] + 170, 262, "T mất khỏi nhánh", COL.panel, COL.r, { stroke: COL.r });
+  } else {
+    nodes.sT = { x: X[2], y: yS, label: "T", fill: COL.b, ring: k === 2 ? COL.g : undefined };
+    edges.sBsT = { from: "sB", to: "sT", c: COL.b };
+    refs.srv = pill(X[2], 80, "feat/login", COL.b, COL.ink);
+    if (k === 2) refs.rej = pill(X[3] + 110, yS, "✕ rejected: stale info", COL.panel, COL.r, { stroke: COL.r });
+  }
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.bisect = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gBisect");
+  const n = 16, x = (i) => 90 + i * 99, y = 170;
+  const plan = [{ lo: 1, hi: 15, test: null, good: [0], bad: [15] }, { lo: 8, hi: 15, test: 7, good: [0, 1, 2, 3, 4, 5, 6, 7], bad: [15] }, { lo: 8, hi: 11, test: 11, good: [0, 1, 2, 3, 4, 5, 6, 7], bad: [11, 12, 13, 14, 15] }, { lo: 10, hi: 11, test: 9, good: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], bad: [11, 12, 13, 14, 15] }, { lo: 10, hi: 10, test: 10, good: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9], bad: [10, 11, 12, 13, 14, 15], culprit: 10 }][k];
+  const nodes = {}, edges = {}, refs = {};
+  for (let i = 0; i < n; i++) {
+    const good = plan.good.includes(i), bad = plan.bad.includes(i), inRange = i >= plan.lo && i <= plan.hi;
+    nodes["n" + i] = { x: x(i), y, r: 26, label: String(i + 1), fs: 19, tc: good || bad || inRange ? COL.ink : COL.mute, fill: good ? COL.g : bad ? COL.r : inRange ? COL.w : COL.m, op: good || bad ? (i === plan.test || i === plan.culprit ? 1 : 0.5) : 1, ring: i === plan.culprit ? COL.r : i === plan.test ? COL.a : undefined, scale: i === plan.culprit ? 1.35 : 1 };
+    if (i) edges["e" + i] = { from: "n" + (i - 1), to: "n" + i, c: COL.line, w: 4 };
+  }
+  refs.good = pill(x(0), 82, "good v1.3.0", COL.g, COL.ink);
+  refs.bad = pill(x(15), 82, "bad HEAD", COL.r, COL.ink);
+  if (plan.culprit !== undefined) refs.cul = pill(x(plan.culprit), 82, "3f2a9c1: thủ phạm", COL.r, COL.ink, { from: [x(plan.culprit), -40] });
+  else edges.rng = { a: [x(plan.lo) - 24, 262], b: [x(plan.hi) + 24, 262], c: COL.a, w: 8, straight: true };
+  const left = plan.hi - plan.lo + 1;
+  refs.cnt = { x: (x(plan.lo) + x(plan.hi)) / 2, y: 310, text: plan.culprit !== undefined ? "tìm thấy sau 4 lần thử" : `còn ${left} commit nghi ngờ`, tc: plan.culprit !== undefined ? COL.r : COL.a, fill: COL.ink, fs: 24 };
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.secret = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gSecret");
+  const y = 130, X = [100, 330, 610];
+  const nodes = { A: { x: X[0], y }, B: { x: X[1], y, fill: COL.r, ring: k >= 2 ? COL.r : undefined } };
+  const edges = edgesOf([["A", "B"]], COL.mute);
+  const refs = { env: pill(X[1], 44, ".env · API_KEY", COL.r, COL.ink) };
+  if (k >= 2) { nodes.C = { x: X[2], y }; edges.BC = { from: "B", to: "C", c: COL.mute }; refs.rm = pill(X[2], 44, "xoá .env", COL.panel, COL.w); refs.om = pill(X[2], 216, "origin/main", COL.panel, COL.b, { stroke: COL.b }); refs.still = pill(X[1], 216, "vẫn trong lịch sử", COL.panel, COL.r, { stroke: COL.r }); }
+  else refs.om = pill(X[1], 216, "origin/main", COL.panel, COL.b, { stroke: COL.b });
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.hooks = (s, k, dir, instant) => {
+  const host = $("#hk", s);
+  const cx = (i) => 330 + i * 300;
+  if (!host._init) {
+    host._init = true;
+    const gates = [["pre-commit", "format, lint, gitleaks"], ["commit-msg", "commitlint"], ["pre-push", "test nhanh, tsc"], ["CI trên MR", "build, test, scan"], ["main bảo vệ", "MR + review"]];
+    host.innerHTML = `<div style="position:absolute;left:40px;right:40px;top:58px;border-top:4px dashed var(--line)"></div>` +
+      gates.map(([t, d], i) => `<div class="hk-g" style="position:absolute;left:${cx(i) - 130}px;top:140px;width:260px;height:240px;border-radius:22px;border:2px solid var(--line);background:var(--panel);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px">
+        <span class="badge n hk-b" style="width:72px;height:72px;font-size:30px">${i + 1}</span><h3 class="mono" style="font-size:28px">${t}</h3><p style="font-size:22px;color:var(--mute)">${d}</p>
+        <span class="hk-tag" style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--mute);height:24px"></span></div>`).join("") +
+      `<div style="position:absolute;left:${cx(0) - 130}px;top:404px;width:${cx(2) - cx(0) + 260}px;text-align:center;font-family:var(--mono);font-size:22px;color:var(--git)">— máy bạn —</div><div style="position:absolute;left:${cx(3) - 130}px;top:404px;width:${cx(4) - cx(3) + 260}px;text-align:center;font-family:var(--mono);font-size:22px;color:var(--blue)">— server —</div>` +
+      `<div class="hk-tok" style="position:absolute;left:0;top:28px;padding:0 24px;height:60px;border-radius:999px;display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:24px;background:var(--fg);color:var(--ink);box-shadow:0 12px 30px rgba(0,0,0,.5);white-space:nowrap">commit 9f8e7d6</div>`;
+  }
+  const tok = $(".hk-tok", host);
+  const tw = 250;
+  const bypass = k === 6;
+  const at = bypass ? 3 : k - 1;
+  const tx = (at < 0 ? 60 : cx(at)) - tw / 2;
+  $$(".hk-g", host).forEach((el, i) => {
+    let st = "idle";
+    if (bypass) st = i < 3 ? "skip" : i === 3 ? "fail" : "idle";
+    else if (i < k) st = "pass";
+    const c = { pass: COL.g, fail: COL.r, skip: COL.line, idle: COL.line }[st];
+    const v = { borderColor: c, opacity: st === "skip" ? 0.35 : 1, scale: (st === "pass" && i === k - 1) || st === "fail" ? 1.06 : 1 };
+    const b = $(".hk-b", el);
+    instant ? gsap.set(el, v) : gsap.to(el, { ...v, duration: 0.5, delay: instant ? 0 : 0.55 });
+    const bv = { backgroundColor: st === "pass" ? COL.g : st === "fail" ? COL.r : COL.panel, color: st === "pass" || st === "fail" ? COL.ink : COL.w };
+    instant ? gsap.set(b, bv) : gsap.to(b, { ...bv, duration: 0.4, delay: 0.55 });
+    b.textContent = st === "pass" ? "✓" : st === "fail" ? "✕" : String(i + 1);
+    $(".hk-tag", el).textContent = st === "skip" ? "--no-verify" : st === "fail" ? "CI chặn lại" : st === "pass" ? "qua" : "";
+    $(".hk-tag", el).style.color = st === "fail" ? COL.r : st === "pass" ? COL.g : COL.mute;
+  });
+  if (instant || tok._x === undefined) gsap.set(tok, { x: tx, y: 0, backgroundColor: bypass ? COL.r : COL.w });
+  else if (bypass && tok._mode !== "bypass") {
+    gsap.timeline().set(tok, { x: 60 - tw / 2, y: 0 }).to(tok, { backgroundColor: COL.a, duration: 0.2 })
+      .to(tok, { x: tx, duration: 1.2, ease: "power1.inOut" }, 0.2)
+      .to(tok, { y: -120, duration: 0.6, ease: "power2.out" }, 0.2).to(tok, { y: 0, duration: 0.6, ease: "bounce.out" }, 0.8)
+      .to(tok, { backgroundColor: COL.r, duration: 0.2 }, 1.3).to(tok, { x: tx - 16, duration: 0.07, yoyo: true, repeat: 5 }, 1.4);
+  } else gsap.to(tok, { x: tx, y: 0, backgroundColor: COL.w, duration: 0.8, ease: "power3.inOut" });
+  tok._x = tx; tok._mode = bypass ? "bypass" : "flow";
+};
+
+
+SCENES.names = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gNames");
+  const y = 200, X = { A: 100, B: 320, C: 540, D: 760 };
+  const nodes = { A: { x: X.A, y }, B: { x: X.B, y }, C: { x: X.C, y }, D: { x: X.D, y, fill: COL.o } };
+  const amber = (a, b) => k === 2 && "ABCD".indexOf(a) >= 0 && "ABCD".indexOf(b) <= 3;
+  const edges = {};
+  [["A", "B"], ["B", "C"], ["C", "D"]].forEach(([a, b]) => { edges[a + b] = { from: a, to: b, c: (k === 1 && a === "C") || k === 2 ? COL.a : (k >= 3 && a !== "A" ? COL.b : COL.mute), w: (k === 1 && a === "C") || k === 2 || (k >= 3 && a !== "A") ? 7 : 5 }; });
+  const refs = { main: pill(X.D, 108, "main", COL.w, COL.ink), head: pill(X.D + 160, 108, "HEAD", COL.panel, COL.w, { stroke: COL.w }) };
+  edges.ha = { a: [X.D + 112, 108], b: [X.D + 52, 108], c: COL.w, w: 3, arrow: true, straight: true };
+  if (k === 1 || k === 4) { nodes.C.ring = COL.a; refs.t1 = pill(X.C, 296, "HEAD~1", COL.a, COL.ink); }
+  if (k === 2) { nodes.A.ring = COL.a; refs.t3 = pill(X.A, 296, "HEAD~3", COL.a, COL.ink); }
+  if (k === 3) { nodes.B.ring = COL.b; refs.om = pill(X.B, 296, "origin/main", COL.panel, COL.b, { stroke: COL.b }); refs.ah = { x: (X.C + X.D) / 2, y: 296, text: "chưa push", tc: COL.b, fill: COL.ink, fs: 22 }; }
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.semver = (s, k, dir, instant) => {
+  const vs = ["140", "141", "150", "200"][k];
+  $$(".vd", s).forEach((el, i) => {
+    if (el.textContent === vs[i]) return;
+    if (instant) { el.textContent = vs[i]; return; }
+    gsap.timeline().to(el, { y: -60, opacity: 0, duration: 0.25, ease: "power2.in" })
+      .add(() => { el.textContent = vs[i]; }).fromTo(el, { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "back.out(2)" });
+  });
+};
+
+SCENES.mergeStrat = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gMS");
+  const y1 = 140, y2 = 320, X = { A: 120, B: 340, C: 560 };
+  const F = [450, 650, 850];
+  const nodes = { A: { x: X.A, y: y1 }, B: { x: X.B, y: y1 }, C: { x: X.C, y: y1, fill: COL.b } };
+  const edges = edgesOf([["A", "B"], ["B", "C"]], COL.mute);
+  const refs = {};
+  let tip = X.C;
+  if (k <= 1) {
+    F.forEach((x, i) => { nodes["F" + (i + 1)] = { x, y: y2, fill: COL.o, label: "F" + (i + 1) }; });
+    Object.assign(edges, { xF: { from: "B", to: "F1", c: COL.o }, F12: { from: "F1", to: "F2", c: COL.o }, F23: { from: "F2", to: "F3", c: COL.o } });
+    refs.feat = pill(F[2], 402, "feat/coupon", COL.o, COL.ink);
+    if (k === 1) { nodes.M = { x: 1080, y: y1, fill: COL.b, label: "M", ring: COL.w }; edges.CM = { from: "C", to: "M", c: COL.mute }; edges.FM = { from: "F3", to: "M", c: COL.o }; tip = 1080; }
+  } else if (k === 2) {
+    F.forEach((x, i) => { nodes["F" + (i + 1)] = { x, y: y2, fill: COL.o, label: "F" + (i + 1), ghost: true }; });
+    Object.assign(edges, { xF: { from: "B", to: "F1", c: COL.o, op: 0.3, dash: "8 10" }, F12: { from: "F1", to: "F2", c: COL.o, op: 0.3, dash: "8 10" }, F23: { from: "F2", to: "F3", c: COL.o, op: 0.3, dash: "8 10" } });
+    nodes.S = { x: 820, y: y1, fill: COL.v, label: "S", r: 34, from: [F[1], y2] }; edges.CS = { from: "C", to: "S", c: COL.v };
+    refs.sq = pill(820, 52, "F1 + F2 + F3", COL.panel, COL.v, { stroke: COL.v });
+    refs.del = { x: F[1], y: 402, text: "nhánh được xoá sau merge", tc: COL.mute, fill: COL.ink, fs: 22 };
+    tip = 820;
+  } else {
+    const nx = [800, 1040, 1280];
+    F.forEach((x, i) => { nodes["F" + (i + 1)] = { x: nx[i], y: y1, fill: COL.o, label: "F" + (i + 1) + "′" }; });
+    Object.assign(edges, { xF: { from: "C", to: "F1", c: COL.o }, F12: { from: "F1", to: "F2", c: COL.o }, F23: { from: "F2", to: "F3", c: COL.o } });
+    tip = 1280;
+  }
+  refs.main = pill(tip, k === 2 ? 228 : 52, "main", COL.w, COL.ink);
+  g.set({ nodes, edges, refs }, instant);
+};
+
+SCENES.cherry = (s, k, dir, instant) => {
+  const g = graphOf(s, "#gCherry");
+  const y1 = 130, y2 = 310;
+  const nodes = { A: { x: 120, y: y1 }, B: { x: 340, y: y1 }, C: { x: 560, y: y1 }, H: { x: 780, y: y1, fill: COL.g, label: "H" }, D: { x: 1000, y: y1 }, R1: { x: 560, y: y2, fill: COL.a, label: "R" } };
+  const edges = { ...edgesOf([["A", "B"], ["B", "C"], ["C", "H"], ["H", "D"]], COL.mute), BR: { from: "B", to: "R1", c: COL.a } };
+  const refs = { main: pill(1000, 46, "main", COL.w, COL.ink), hh: { x: 780, y: 46, text: "7c8d9e0 fix(cart)", tc: COL.g, fill: COL.ink, fs: 20 } };
+  let rel = 560;
+  if (k >= 1) { nodes.H2 = { x: 800, y: y2, fill: COL.g, label: "H′", ring: COL.w, from: [780, y1] }; edges.RH = { from: "R1", to: "H2", c: COL.a }; rel = 800; refs.cp = { x: 880, y: y2, text: "(cherry picked from commit 7c8d9e0)", plain: true, tc: COL.mute, fs: 22, weight: 500 }; }
+  refs.rel = pill(rel, 392, "release/1.4", COL.a, COL.ink);
+  g.set({ nodes, edges, refs }, instant);
+};
+
+/* ================= deck engine ================= */
+const stage = $("#stage"), view = $("#view");
+const slides = $$(".slide", stage);
+let cur = 0, step = 0;
+const stepsOf = (s) => +(s.dataset.steps || 0);
+
+slides.forEach((s) => {
+  $$(".r", s).forEach((el, i) => el.style.setProperty("--i", i));
+  $$(".typed", s).forEach((el) => { el._full = el.textContent; });
+  $$("[data-count]", s).forEach((el) => { el._full = el.textContent; });
+});
+
+function typeEl(el, instant) {
+  clearInterval(el._tm);
+  el.classList.remove("typing");
+  if (instant || REDUCED) { el.textContent = el._full; return Promise.resolve(); }
+  const full = el._full; let i = 0;
+  const inc = Math.max(1, Math.ceil(full.length / (el.closest(".term.auto") ? 14 : 26)));
+  el.textContent = ""; el.classList.add("typing");
+  return new Promise((res) => {
+    el._tm = setInterval(() => {
+      i += inc; el.textContent = full.slice(0, i);
+      if (i >= full.length) { clearInterval(el._tm); el.classList.remove("typing"); res(); }
+    }, 24);
+  });
+}
+async function runTerm(term, instant) {
+  const run = (term._run = (term._run || 0) + 1);
+  const lines = $$(".ln", term);
+  if (instant) { lines.forEach((l) => { l.classList.add("shown"); $$(".typed", l).forEach((t) => typeEl(t, true)); }); return; }
+  lines.forEach((l) => { l.classList.remove("shown"); $$(".typed", l).forEach((t) => { clearInterval(t._tm); t.textContent = ""; }); });
+  await new Promise((r) => setTimeout(r, 450));
+  for (const l of lines) {
+    if (term._run !== run) return;
+    l.classList.add("shown");
+    const ts = $$(".typed", l);
+    for (const t of ts) { await typeEl(t, false); if (term._run !== run) return; }
+    await new Promise((r) => setTimeout(r, ts.length ? 70 : 40));
+  }
+}
+function countUp(el, instant) {
+  const target = +el.dataset.count, fmt = el.dataset.fmt;
+  const show = (v) => { el.textContent = fmt === "clock" ? "00:00:" + String(Math.round(v)).padStart(2, "0") : String(Math.round(v)); };
+  if (el._tw) el._tw.kill();
+  if (instant) { show(target); return; }
+  const o = { v: 0 }; show(0);
+  el._tw = gsap.to(o, { v: target, duration: 1.6, ease: "power2.out", onUpdate: () => show(o.v) });
+}
+function parseSet(str) {
+  const out = new Set();
+  str.split(",").forEach((p) => { const [a, b] = p.split("-").map(Number); for (let i = a; i <= (isNaN(b) ? a : b); i++) out.add(i); });
+  return out;
+}
+
+function apply(s, k, dir, instant, sceneInstant) {
+  $$("[data-in]", s).forEach((el) => el.classList.toggle("on", k >= +el.dataset.in));
+  $$("[data-out]", s).forEach((el) => el.classList.toggle("gone", k >= +el.dataset.out));
+  $$("[data-add]", s).forEach((el) => { const [n, cls] = el.dataset.add.split(":"); el.classList.toggle(cls, k >= +n); });
+  $$("[data-x]", s).forEach((el) => { const [n, cls] = el.dataset.x.split(":"); el.classList.toggle(cls, k >= +n); });
+  $$("[data-at]", s).forEach((el) => {
+    const act = parseSet(el.dataset.at).has(k);
+    const was = el.classList.contains("act");
+    el.classList.toggle("act", act);
+    if (act && (!was || instant)) $$(".typed", el).forEach((t) => typeEl(t, instant));
+  });
+  $$(".typed", s).forEach((t) => {
+    if (t.closest("[data-at]") || t.closest(".term.auto")) return;
+    const host = t.closest("[data-in]");
+    const vis = !host || host.classList.contains("on");
+    if (vis && !t._shown) { t._shown = true; typeEl(t, instant); }
+    if (!vis) t._shown = false;
+  });
+  $$("[data-count]", s).forEach((el) => {
+    const host = el.closest("[data-in]");
+    const vis = !host || host.classList.contains("on");
+    if (vis && !el._done) { el._done = true; countUp(el, instant); }
+    if (!vis) { el._done = false; }
+  });
+  const sc = SCENES[s.dataset.scene];
+  if (sc) sc(s, k, dir, sceneInstant === undefined ? instant : sceneInstant);
+}
+
+let exitTimer = null;
+function show(n, k, dir) {
+  n = Math.max(0, Math.min(slides.length - 1, n));
+  const prev = slides[cur], next = slides[n];
+  if (n !== cur) {
+    clearTimeout(exitTimer);
+    slides.forEach((x) => x.classList.remove("exit-l", "exit-r", "enter-l", "enter-r"));
+    prev.classList.remove("active");
+    prev.classList.add(dir > 0 ? "exit-l" : "exit-r");
+    exitTimer = setTimeout(() => prev.classList.remove("exit-l", "exit-r"), 800);
+    next.classList.add(dir > 0 ? "enter-r" : "enter-l");
+    void next.offsetWidth;
+    next.classList.remove("enter-r", "enter-l");
+    next.classList.add("active");
+    // every slide entered lands fully formed at its step; resets data-count so stats replay
+    $$("[data-count]", next).forEach((el) => (el._done = false));
+    $$(".typed", next).forEach((t) => (t._shown = false));
+    cur = n; step = k;
+    $$("[data-at]", next).forEach((el) => el.classList.remove("act"));
+    if (dir > 0 && k === 0) {
+      apply(next, 0, dir, false, true);
+      $$(".term.auto", next).forEach((t) => runTerm(t, false));
+    } else {
+      apply(next, k, dir, true);
+      $$(".term.auto", next).forEach((t) => runTerm(t, true));
+    }
+  } else {
+    step = k;
+    apply(next, k, dir, false);
+  }
+  hud();
+  fx();
+}
+function next() { const s = slides[cur]; if (step < stepsOf(s)) show(cur, step + 1, 1); else if (cur < slides.length - 1) show(cur + 1, 0, 1); }
+function prev() { if (step > 0) show(cur, step - 1, -1); else if (cur > 0) show(cur - 1, stepsOf(slides[cur - 1]), -1); }
+function jump(n) { show(n, 0, n >= cur ? 1 : -1); }
+
+/* ---------- HUD, notes, overview ---------- */
+const hudEl = $("#hud");
+function hud() {
+  const s = slides[cur];
+  $(".sec", hudEl).textContent = s.dataset.sec || "";
+  $(".num", hudEl).textContent = `${cur + 1} / ${slides.length}`;
+  $(".fill", hudEl).style.width = (cur / (slides.length - 1)) * 100 + "%";
+  const n = stepsOf(s);
+  $(".dots", hudEl).innerHTML = n ? Array.from({ length: n + 1 }, (_, i) => `<i class="${i <= step ? "on" : ""}"></i>`).join("") : "";
+  stage.classList.toggle("nohud", s.classList.contains("divider") || cur === 0);
+  const notes = $("#notes");
+  if (!notes.hidden) fillNotes();
+}
+let t0 = null;
+function fillNotes() {
+  const s = slides[cur], nx = slides[cur + 1];
+  const notes = $("#notes");
+  $(".where", notes).textContent = `${cur + 1}/${slides.length} · ${s.dataset.title || ""}${stepsOf(s) ? ` · bước ${step}/${stepsOf(s)}` : ""}`;
+  $(".next", notes).textContent = nx ? `Tiếp: ${nx.dataset.title || ""}` : "Hết";
+  $(".txt", notes).textContent = ($(".notes", s) || {}).textContent || "";
+}
+setInterval(() => {
+  if (t0 === null) return;
+  const sec = Math.floor((Date.now() - t0) / 1000);
+  $("#notes .timer").textContent = `${String(Math.floor(sec / 60)).padStart(2, "0")}:${String(sec % 60).padStart(2, "0")}`;
+}, 1000);
+function toggleNotes() { const n = $("#notes"); n.hidden = !n.hidden; if (!n.hidden) { if (t0 === null) t0 = Date.now(); fillNotes(); } }
+function buildOverview() {
+  const groups = [];
+  slides.forEach((s, i) => { const sec = s.dataset.sec || ""; if (!groups.length || groups[groups.length - 1].sec !== sec) groups.push({ sec, items: [] }); groups[groups.length - 1].items.push([i, s.dataset.title || `Slide ${i + 1}`]); });
+  $("#ovList").innerHTML = groups.map((g) => `<div><h3>${g.sec}</h3><div class="grid">${g.items.map(([i, t]) => `<button data-go="${i}" class="${i === cur ? "cur" : ""}"><span>${String(i + 1).padStart(2, "0")}</span>${t}</button>`).join("")}</div></div>`).join("");
+}
+function toggleOv(force) {
+  const ov = $("#ov"); const open = force !== undefined ? force : ov.hidden;
+  if (open) { buildOverview(); ov.hidden = false; const c = $("button.cur", ov); if (c) c.focus(); } else ov.hidden = true;
+}
+$("#ovList").addEventListener("click", (e) => { const b = e.target.closest("[data-go]"); if (b) { toggleOv(false); jump(+b.dataset.go); } });
+$("#ovClose").addEventListener("click", () => toggleOv(false));
+
+function fullscreen() {
+  try {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else { const p = document.documentElement.requestFullscreen && document.documentElement.requestFullscreen(); if (p && p.catch) p.catch(() => {}); }
+  } catch (e) { /* fullscreen not available in this view */ }
+}
+let black = false;
+function blackout() { black = !black; gsap.to(stage, { opacity: black ? 0 : 1, duration: 0.4 }); }
+
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const ovOpen = !$("#ov").hidden;
+  if (e.key === "Escape") { if (ovOpen) toggleOv(false); else if (!$("#notes").hidden) toggleNotes(); return; }
+  if (ovOpen) return;
+  const k = e.key;
+  if (["ArrowRight", " ", "PageDown", "Enter"].includes(k)) { e.preventDefault(); next(); }
+  else if (["ArrowLeft", "PageUp", "Backspace"].includes(k)) { e.preventDefault(); prev(); }
+  else if (k === "ArrowDown") { e.preventDefault(); if (cur < slides.length - 1) jump(cur + 1); }
+  else if (k === "ArrowUp") { e.preventDefault(); if (cur > 0) show(cur - 1, 0, -1); }
+  else if (k === "Home") jump(0);
+  else if (k === "End") jump(slides.length - 1);
+  else if (k === "n" || k === "N") toggleNotes();
+  else if (k === "o" || k === "O" || k === "g" || k === "G") toggleOv();
+  else if (k === "f" || k === "F") fullscreen();
+  else if (k === "b" || k === "B" || k === ".") blackout();
+});
+stage.addEventListener("click", (e) => {
+  const r = stage.getBoundingClientRect();
+  if (e.clientX - r.left < r.width * 0.3) prev(); else next();
+});
+let tx0 = null;
+view.addEventListener("touchstart", (e) => { tx0 = e.touches[0].clientX; }, { passive: true });
+view.addEventListener("touchend", (e) => { if (tx0 === null) return; const dx = e.changedTouches[0].clientX - tx0; if (Math.abs(dx) > 50) (dx < 0 ? next : prev)(); tx0 = null; });
+$("#bPrev").addEventListener("click", prev);
+$("#bNext").addEventListener("click", next);
+$("#bNotes").addEventListener("click", toggleNotes);
+$("#bOv").addEventListener("click", () => toggleOv());
+$("#bFs").addEventListener("click", fullscreen);
+let idleT;
+function wake() { document.body.classList.remove("idle"); clearTimeout(idleT); idleT = setTimeout(() => document.body.classList.add("idle"), 2600); }
+document.addEventListener("mousemove", wake); wake();
+
+function fit() {
+  const cs = getComputedStyle(view);
+  const w = view.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const h = view.clientHeight;
+  const sc = Math.min(w / 1920, h / 1080);
+  stage.style.transform = `translate(-50%, -50%) scale(${sc})`;
+}
+addEventListener("resize", fit);
+
+/* ---------- ambient commit-graph canvas on cover and closing slides ---------- */
+const canvases = [$("#coverfx"), $("#endfx")].filter(Boolean);
+let raf = null;
+function fx() {
+  const want = canvases.some((c) => c.closest(".slide").classList.contains("active"));
+  if (want && !raf && !REDUCED) raf = requestAnimationFrame(draw);
+  if (REDUCED) canvases.forEach((c) => drawFrame(c, 0));
+}
+const lanes = [{ y: 180, c: "rgba(149,162,177,.22)" }, { y: 330, c: "rgba(240,80,51,.55)" }, { y: 480, c: "rgba(149,162,177,.18)" }, { y: 760, c: "rgba(89,168,255,.28)" }, { y: 910, c: "rgba(149,162,177,.16)" }];
+function drawFrame(cv, t) {
+  const ctx = cv.getContext("2d");
+  ctx.clearRect(0, 0, 1920, 1080);
+  const gap = 170, off = (t * 0.035) % gap;
+  ctx.lineWidth = 4; ctx.lineCap = "round";
+  lanes.forEach((L, li) => {
+    ctx.strokeStyle = L.c; ctx.beginPath(); ctx.moveTo(0, L.y); ctx.lineTo(1920, L.y); ctx.stroke();
+    for (let x = -gap + off + li * 37; x < 1920 + gap; x += gap) {
+      const idx = Math.round((x - off - li * 37) / gap);
+      if ((idx + li) % 4 === 0 && li < lanes.length - 1) {
+        const L2 = lanes[li + 1];
+        ctx.strokeStyle = L2.c; ctx.beginPath(); ctx.moveTo(x, L.y); ctx.bezierCurveTo(x + 90, L.y, x + 80, L2.y, x + 170, L2.y); ctx.stroke();
+      }
+      ctx.fillStyle = L.c.replace(/[\d.]+\)$/, (m) => Math.min(1, parseFloat(m) * 2.2) + ")");
+      ctx.beginPath(); ctx.arc(x, L.y, 13, 0, Math.PI * 2); ctx.fill();
+    }
+  });
+}
+function draw(t) {
+  raf = null;
+  let any = false;
+  canvases.forEach((c) => { if (c.closest(".slide").classList.contains("active")) { drawFrame(c, t); any = true; } });
+  if (any) raf = requestAnimationFrame(draw);
+}
+
+/* ---------- boot ---------- */
+fit();
+const m = /^#s(\d+)$/.exec(location.hash || "");
+const start = m ? Math.max(0, Math.min(slides.length - 1, +m[1] - 1)) : 0;
+cur = start;
+slides[start].classList.add("active");
+apply(slides[start], 0, 1, false, true);
+$$(".term.auto", slides[start]).forEach((t) => runTerm(t, false));
+hud(); fx();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+})();
+</script>
+
+</body>
+</html>
